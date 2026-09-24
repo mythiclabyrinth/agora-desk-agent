@@ -16,6 +16,22 @@ constexpr AgentDefaults kAgents[] = {
     {"codex", "Codex", "Codex", "codex-cli"},
 };
 
+// Defaults mirror Agora's config.rs. Groq is the default provider here because
+// that is the key this desk was built around; OpenAI is a switch away.
+constexpr char DEFAULT_GROQ_STT[] = "whisper-large-v3-turbo";
+constexpr char DEFAULT_OPENAI_STT[] = "gpt-4o-mini-transcribe";
+constexpr char DEFAULT_GROQ_TTS[] = "canopylabs/orpheus-v1-english";
+constexpr char GROQ_ARABIC_TTS[] = "canopylabs/orpheus-arabic-saudi";
+constexpr char DEFAULT_OPENAI_TTS[] = "gpt-4o-mini-tts";
+constexpr char DEFAULT_GROQ_VOICE[] = "autumn";
+constexpr char GROQ_ARABIC_VOICE[] = "noura";
+constexpr char DEFAULT_OPENAI_VOICE[] = "alloy";
+constexpr char DEFAULT_ACCENT[] = "american";
+
+String orDefault(const String &value, const char *fallback) {
+  return value.length() ? value : String(fallback);
+}
+
 const AgentDefaults *defaultsFor(AgentKind kind) {
   switch (kind) {
     case AgentKind::Claude: return &kAgents[0];
@@ -110,5 +126,88 @@ bool ConfigStore::saveAgent(AgentKind kind, const AgentSettings &incoming, bool 
   _prefs.putString(fieldKey(kind, "ch").c_str(), incoming.channel.c_str());
   _prefs.putString(fieldKey(kind, "tok").c_str(), token.c_str());
   _prefs.putString(fieldKey(kind, "set").c_str(), "1");
+  return true;
+}
+
+bool voiceProviderKnown(const String &provider) {
+  return provider == VOICE_GROQ || provider == VOICE_OPENAI;
+}
+
+bool voiceAccentKnown(const String &accent) {
+  return accent == "american" || accent == "british" || accent == "arabic";
+}
+
+const String &VoiceSettings::keyFor(const String &provider) const {
+  return provider == VOICE_OPENAI ? openaiKey : groqKey;
+}
+
+const String &VoiceSettings::sttKey() const { return keyFor(sttProvider); }
+const String &VoiceSettings::ttsKey() const { return keyFor(ttsProvider); }
+bool VoiceSettings::sttReady() const { return sttKey().length() > 0; }
+bool VoiceSettings::ttsReady() const { return ttsKey().length() > 0; }
+
+String VoiceSettings::sttModel() const {
+  return sttProvider == VOICE_OPENAI ? sttModelOpenai : sttModelGroq;
+}
+
+String VoiceSettings::ttsModel() const {
+  if (ttsProvider == VOICE_OPENAI) return ttsModelOpenai;
+  if (accent == "arabic") return GROQ_ARABIC_TTS;
+  return ttsModelGroq;
+}
+
+String VoiceSettings::ttsVoice() const {
+  if (ttsProvider == VOICE_OPENAI) return voiceOpenai;
+  // The English voices cannot speak the Arabic model; fall back like Agora.
+  bool arabic = accent == "arabic" || ttsModelGroq.indexOf("arabic") >= 0;
+  if (arabic) {
+    const char *arabicVoices[] = {"abdullah", "fahad", "sultan", "lulwa", "noura", "aisha"};
+    for (const char *v : arabicVoices) if (voiceGroq == v) return voiceGroq;
+    return GROQ_ARABIC_VOICE;
+  }
+  return voiceGroq;
+}
+
+VoiceSettings ConfigStore::voice() {
+  VoiceSettings s;
+  s.groqKey = _prefs.getString("vk_groq", "");
+  s.openaiKey = _prefs.getString("vk_openai", "");
+  s.sttProvider = orDefault(_prefs.getString("v_sttp", ""), VOICE_GROQ);
+  s.ttsProvider = orDefault(_prefs.getString("v_ttsp", ""), VOICE_GROQ);
+  s.sttModelGroq = orDefault(_prefs.getString("v_stt_g", ""), DEFAULT_GROQ_STT);
+  s.sttModelOpenai = orDefault(_prefs.getString("v_stt_o", ""), DEFAULT_OPENAI_STT);
+  s.ttsModelGroq = orDefault(_prefs.getString("v_tts_g", ""), DEFAULT_GROQ_TTS);
+  s.ttsModelOpenai = orDefault(_prefs.getString("v_tts_o", ""), DEFAULT_OPENAI_TTS);
+  s.voiceGroq = orDefault(_prefs.getString("v_vc_g", ""), DEFAULT_GROQ_VOICE);
+  s.voiceOpenai = orDefault(_prefs.getString("v_vc_o", ""), DEFAULT_OPENAI_VOICE);
+  s.accent = orDefault(_prefs.getString("v_acc", ""), DEFAULT_ACCENT);
+  s.agentKey = orDefault(_prefs.getString("voice_ag", ""), "claude");
+  if (!voiceProviderKnown(s.sttProvider)) s.sttProvider = VOICE_GROQ;
+  if (!voiceProviderKnown(s.ttsProvider)) s.ttsProvider = VOICE_GROQ;
+  if (!voiceAccentKnown(s.accent)) s.accent = DEFAULT_ACCENT;
+  return s;
+}
+
+void ConfigStore::saveVoiceFeatures(const VoiceSettings &in) {
+  _prefs.putString("v_sttp", voiceProviderKnown(in.sttProvider) ? in.sttProvider.c_str() : VOICE_GROQ);
+  _prefs.putString("v_ttsp", voiceProviderKnown(in.ttsProvider) ? in.ttsProvider.c_str() : VOICE_GROQ);
+  _prefs.putString("v_stt_g", orDefault(in.sttModelGroq, DEFAULT_GROQ_STT).c_str());
+  _prefs.putString("v_stt_o", orDefault(in.sttModelOpenai, DEFAULT_OPENAI_STT).c_str());
+  _prefs.putString("v_tts_g", orDefault(in.ttsModelGroq, DEFAULT_GROQ_TTS).c_str());
+  _prefs.putString("v_tts_o", orDefault(in.ttsModelOpenai, DEFAULT_OPENAI_TTS).c_str());
+  _prefs.putString("v_vc_g", orDefault(in.voiceGroq, DEFAULT_GROQ_VOICE).c_str());
+  _prefs.putString("v_vc_o", orDefault(in.voiceOpenai, DEFAULT_OPENAI_VOICE).c_str());
+  _prefs.putString("v_acc", voiceAccentKnown(in.accent) ? in.accent.c_str() : DEFAULT_ACCENT);
+  _prefs.putString("voice_ag", orDefault(in.agentKey, "claude").c_str());
+}
+
+bool ConfigStore::saveVoiceKey(const String &provider, const String &key) {
+  if (!voiceProviderKnown(provider)) return false;
+  const char *slot = provider == VOICE_OPENAI ? "vk_openai" : "vk_groq";
+  if (!key.length()) {
+    _prefs.remove(slot);
+    return true;
+  }
+  _prefs.putString(slot, key.c_str());
   return true;
 }

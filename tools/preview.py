@@ -1,9 +1,12 @@
 #!/usr/bin/env python3
 """Preview the embedded page with isolated demo APIs; never contacts the ESP32.
 Run: python3 tools/preview.py, then open http://127.0.0.1:8765.
-Add ?scenario=offline or ?scenario=empty to exercise connection/setup states.
+Add ?scenario=offline or ?scenario=empty to exercise connection/setup states,
+or ?scenario=voice to watch a button conversation land in the chat.
 """
 import json
+import math
+import struct
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -16,6 +19,28 @@ AGENTS = [dict(id=k, title=k.title(), name=k.title(), agent_id=k+'-cli',
                token_set=k == 'claude', ready=k == 'claude')
           for k in ('claude', 'cursor', 'codex')]
 JOB = {'number': 0, 'started': 0, 'agent': 'claude'}
+VOICE = dict(keys=dict(groq=False, openai=False), stt_provider='groq', tts_provider='groq',
+             stt_models=dict(groq='whisper-large-v3-turbo', openai='gpt-4o-mini-transcribe'),
+             tts_models=dict(groq='canopylabs/orpheus-v1-english', openai='gpt-4o-mini-tts'),
+             tts_voices=dict(groq='autumn', openai='alloy'), accent='american', agent='claude',
+             stt_ready=False, tts_ready=False, mic=True, speaker=True, button_pin=6)
+# ?scenario=voice walks the button flow: recording -> transcribing -> waiting -> speaking -> done.
+# The chat mic button drives the same steps from /api/voice/talk.
+VOICE_STEPS = [(0, 'recording'), (3, 'transcribing'), (5, 'waiting'), (9, 'speaking'), (13, 'done')]
+VOICE_RUN = {'started': 0, 'source': 'button', 'agent': 'claude', 'stopped': 0}
+
+
+def voice_ready():
+    VOICE['stt_ready'] = VOICE['keys'][VOICE['stt_provider']]
+    VOICE['tts_ready'] = VOICE['keys'][VOICE['tts_provider']]
+
+def tone_wav(seconds, rate=24000):
+    n = max(int(rate * max(seconds, 0.3)), 1)
+    pcm = b''.join(struct.pack('<h', int(6000 * math.sin(2 * math.pi * (440 if i < n / 2 else 554) * i / rate)))
+                   for i in range(n))
+    return b'RIFF' + struct.pack('<I', 36 + len(pcm)) + b'WAVEfmt ' + struct.pack('<IHHIIHH', 16, 1, 1, rate, rate * 2, 2, 16) \
+        + b'data' + struct.pack('<I', len(pcm)) + pcm
+
 
 class Handler(BaseHTTPRequestHandler):
     def reply(self, data, code=200):
@@ -41,9 +66,28 @@ class Handler(BaseHTTPRequestHandler):
         elif path == '/api/agents':
             self.reply({'agents': [dict(a, ready=False, token_set=False) if empty else a for a in AGENTS]})
         elif path == '/api/status':
+            voice = dict(state='idle', source='button', job=0, agent='claude', recorded_ms=0,
+                         stt_ready=VOICE['stt_ready'], tts_ready=VOICE['tts_ready'], mic=True, speaker=True)
+            if 'scenario=voice' in scenario and not VOICE_RUN['started']:
+                VOICE_RUN.update(started=time.time(), source='button', agent='claude', stopped=0)
+            if VOICE_RUN['started']:
+                elapsed = time.time() - VOICE_RUN['started']
+                if VOICE_RUN['source'] == 'page':
+                    # A page recording runs until the mic is tapped again, then plays out the rest.
+                    elapsed = 0 if not VOICE_RUN['stopped'] else 3 + time.time() - VOICE_RUN['stopped']
+                state = [s for at, s in VOICE_STEPS if elapsed >= at][-1]
+                voice.update(state=state, source=VOICE_RUN['source'], agent=VOICE_RUN['agent'],
+                             job=int(VOICE_RUN['started']), recorded_ms=min(int(elapsed*1000), 2600))
+                if elapsed >= 5:
+                    voice['heard'] = 'What should I work on this afternoon?'
+                if state == 'done':
+                    voice['reply'] = 'Finish the voice branch, then take the board for a walk around the room and see how far the mic reaches.'
             self.reply(dict(wifi=not offline, ssid='Studio Wi-Fi', ip='192.168.0.113', ap_ip='192.168.4.1',
                             host='esp32-agent.local', listening=bool(JOB['number'] and time.time()-JOB['started'] < 4),
+                            voice=voice,
                             agents=[dict(id=a['id'], name=a['name'], ready=False if empty else a['ready']) for a in AGENTS]))
+        elif path == '/api/voice':
+            self.reply(VOICE)
         elif path == '/api/wifi/scan':
             time.sleep(1)
             if 'scan-error' in scenario:
@@ -62,7 +106,26 @@ class Handler(BaseHTTPRequestHandler):
             self.reply({'error':'Not found'},404)
 
     def do_POST(self):
-        data = json.loads(self.rfile.read(int(self.headers.get('Content-Length', '0'))))
+        raw = self.rfile.read(int(self.headers.get('Content-Length', '0')))
+        if self.path == '/api/voice/transcribe':
+            # Browser-mode mic: the page uploads a multipart clip and gets the transcript back.
+            time.sleep(1.2)
+            if not VOICE['stt_ready']:
+                return self.reply({'error':'Add the speech-to-text provider\'s API key under Settings › Voice.'},400)
+            if b'filename="clip.' not in raw:
+                return self.reply({'error':'No audio arrived. Try recording again.'},400)
+            return self.reply({'ok':True,'text':'What should I work on this afternoon?','bytes':len(raw)})
+        data = json.loads(raw or b'{}')
+        if self.path == '/api/voice/say':
+            # Browser-mode speaker: a finite WAV the page plays itself. A soft two-tone stands in for speech.
+            time.sleep(1.0)
+            if not VOICE['tts_ready']:
+                return self.reply({'error':'Add the text-to-speech provider\'s API key under Settings › Voice.'},400)
+            wav = tone_wav(min(len(data.get('text','')) * 0.03, 2.0))
+            self.send_response(200)
+            self.send_header('Content-Type','audio/wav'); self.send_header('Content-Length',str(len(wav)))
+            self.send_header('Cache-Control','no-store'); self.end_headers(); self.wfile.write(wav)
+            return
         if self.path == '/api/chat':
             if 'preview-error' in data.get('text',''):
                 return self.reply({'error':'Demo connection failed. Please retry.'},503)
@@ -75,6 +138,30 @@ class Handler(BaseHTTPRequestHandler):
             self.reply({'ok':True,'ready':True})
         elif self.path == '/api/wifi':
             self.reply({'ok':True,'connected':True,'ip':'192.168.0.113'})
+        elif self.path == '/api/voice':
+            VOICE.update(stt_provider=data['stt_provider'], tts_provider=data['tts_provider'], accent=data['accent'], agent=data['agent'],
+                         stt_models=dict(groq=data['stt_model_groq'], openai=data['stt_model_openai']),
+                         tts_models=dict(groq=data['tts_model_groq'], openai=data['tts_model_openai']),
+                         tts_voices=dict(groq=data['voice_groq'], openai=data['voice_openai']))
+            voice_ready()
+            self.reply({'ok':True,'stt_ready':VOICE['stt_ready'],'tts_ready':VOICE['tts_ready']})
+        elif self.path == '/api/voice/keys':
+            if not data.get('clear') and not data.get('api_key','').startswith(('gsk_','sk-')):
+                return self.reply({'error':'That does not look like an API key.'},400)
+            VOICE['keys'][data['provider']] = not data.get('clear')
+            voice_ready()
+            self.reply({'ok':True})
+        elif self.path == '/api/voice/test':
+            time.sleep(0.8)
+            if not VOICE['keys'].get(data['provider']):
+                return self.reply({'error':'No key saved for that provider yet.'},400)
+            self.reply({'ok':True})
+        elif self.path == '/api/voice/talk':
+            if data.get('action') == 'start':
+                VOICE_RUN.update(started=time.time(), source='page', agent=data.get('agent','claude'), stopped=0)
+            else:
+                VOICE_RUN['stopped'] = time.time()
+            self.reply({'ok':True,'job':int(VOICE_RUN['started']),'state':'recording'})
         else:
             self.reply({'error':'Not found'},404)
 

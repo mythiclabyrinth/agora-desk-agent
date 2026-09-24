@@ -232,6 +232,36 @@ inline bool jsonTopLong(const String &json, const char *key, long long &out) {
   return true;
 }
 
+struct JsonTopBool {
+  const char *key;
+  bool value = false;
+  bool found = false;
+};
+
+inline bool jsonTakeBool(const String &key, const String &json, int &i, void *ctx) {
+  auto *hit = static_cast<JsonTopBool *>(ctx);
+  if (key != hit->key) return false;
+  jsonSkipWs(json, i);
+  if (json.startsWith("true", i)) {
+    hit->value = true;
+    hit->found = true;
+    i += 4;
+  } else if (json.startsWith("false", i)) {
+    hit->value = false;
+    hit->found = true;
+    i += 5;
+  }
+  return true;
+}
+
+inline bool jsonTopBool(const String &json, const char *key, bool &out) {
+  JsonTopBool hit;
+  hit.key = key;
+  if (!jsonForEachTopField(json, jsonTakeBool, &hit) || !hit.found) return false;
+  out = hit.value;
+  return true;
+}
+
 struct JsonMessage {
   long long id = 0;
   bool hasId = false;

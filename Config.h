@@ -15,6 +15,40 @@ struct AgentSettings {
   bool ready = false;
 };
 
+// Voice follows Agora's model: speech-to-text and text-to-speech each pick
+// a provider (Groq or OpenAI) independently, keys are per provider, and each
+// provider remembers its own model/voice so switching back loses nothing.
+constexpr char VOICE_GROQ[] = "groq";
+constexpr char VOICE_OPENAI[] = "openai";
+
+struct VoiceSettings {
+  String groqKey;
+  String openaiKey;
+  String sttProvider;
+  String ttsProvider;
+  String sttModelGroq;
+  String sttModelOpenai;
+  String ttsModelGroq;
+  String ttsModelOpenai;
+  String voiceGroq;
+  String voiceOpenai;
+  String accent;    // american | british | arabic
+  String agentKey;  // which agent the talk button reaches: claude, cursor, codex
+
+  bool sttReady() const;
+  bool ttsReady() const;
+  const String &sttKey() const;
+  const String &ttsKey() const;
+  String sttModel() const;
+  // Groq + Arabic swaps in the Arabic Orpheus model, as Agora does.
+  String ttsModel() const;
+  String ttsVoice() const;
+  const String &keyFor(const String &provider) const;
+};
+
+bool voiceProviderKnown(const String &provider);
+bool voiceAccentKnown(const String &accent);
+
 class ConfigStore {
  public:
   void begin();
@@ -25,6 +59,10 @@ class ConfigStore {
 
   AgentSettings agent(AgentKind kind);
   bool saveAgent(AgentKind kind, const AgentSettings &incoming, bool keepToken);
+
+  VoiceSettings voice();
+  void saveVoiceFeatures(const VoiceSettings &incoming);
+  bool saveVoiceKey(const String &provider, const String &key);  // empty key clears
 
   static AgentKind parseAgent(const String &id);
   static const char *agentKey(AgentKind kind);

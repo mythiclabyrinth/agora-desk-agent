@@ -6,8 +6,17 @@
 #include "Json.h"
 #include "Page.h"
 #include "Portal.h"
+#include "Audio.h"
+#include "Speech.h"
+#include "VoiceFlow.h"
+
+#include <esp_heap_caps.h>
 
 namespace {
+
+// A browser clip is opus/aac, so a minute is well under this.
+constexpr size_t CLIP_MAX_BYTES = 3u * 1024 * 1024;
+constexpr size_t CLIP_FIRST_ALLOC = 256u * 1024;
 
 const char *phaseName(Phase phase) {
   switch (phase) {
@@ -54,6 +63,18 @@ bool validToken(const String &token) {
   return true;
 }
 
+// Model and voice names: Groq ids like canopylabs/orpheus-v1-english.
+bool validModel(const String &value, size_t maxLen) {
+  if (!value.length() || value.length() > maxLen) return false;
+  for (unsigned i = 0; i < value.length(); i++) {
+    char c = value[i];
+    bool ok = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
+              (c >= '0' && c <= '9') || c == '-' || c == '_' || c == '.' || c == '/' || c == ':';
+    if (!ok) return false;
+  }
+  return true;
+}
+
 const AgentKind kKinds[] = {AgentKind::Claude, AgentKind::Cursor, AgentKind::Codex};
 
 }  // namespace
@@ -69,6 +90,14 @@ void WebUi::begin() {
   _server.on("/api/agents", HTTP_GET, [this]() { handleAgentsGet(); });
   _server.on("/api/agents", HTTP_POST, [this]() { handleAgentsPost(); });
   _server.on("/api/chat", HTTP_POST, [this]() { handleChat(); });
+  _server.on("/api/voice", HTTP_GET, [this]() { handleVoiceGet(); });
+  _server.on("/api/voice", HTTP_POST, [this]() { handleVoicePost(); });
+  _server.on("/api/voice/keys", HTTP_POST, [this]() { handleVoiceKeys(); });
+  _server.on("/api/voice/test", HTTP_POST, [this]() { handleVoiceTest(); });
+  _server.on("/api/voice/talk", HTTP_POST, [this]() { handleVoiceTalk(); });
+  _server.on("/api/voice/transcribe", HTTP_POST, [this]() { handleTranscribe(); },
+             [this]() { handleTranscribeUpload(); });
+  _server.on("/api/voice/say", HTTP_POST, [this]() { handleSay(); });
 
   const char *captive[] = {
       "/generate_204", "/gen_204", "/hotspot-detect.html", "/library/test/success.html",
@@ -132,6 +161,46 @@ void WebUi::handleStatus() {
   body += MDNS_HOST;
   body += ".local\",\"listening\":";
   body += chatClient.phase() == Phase::Listening ? "true" : "false";
+
+  // The page mirrors what the button is doing so a spoken exchange shows up
+  // in the chat log too.
+  VoiceStatus voice = voiceFlow.status();
+  VoiceSettings voiceSettings = configStore.voice();
+  body += ",\"voice\":{\"state\":\"";
+  body += voicePhaseName(voice.phase);
+  body += "\",\"source\":\"";
+  body += voiceSourceName(voice.source);
+  body += "\",\"job\":";
+  body += String(voice.job);
+  body += ",\"agent\":\"";
+  body += jsonEscape(voice.agentKey);
+  body += "\",\"recorded_ms\":";
+  body += String(voice.recordedMs);
+  body += ",\"stt_ready\":";
+  body += voiceSettings.sttReady() ? "true" : "false";
+  body += ",\"tts_ready\":";
+  body += voiceSettings.ttsReady() ? "true" : "false";
+  body += ",\"mic\":";
+  body += audio.micReady() ? "true" : "false";
+  body += ",\"speaker\":";
+  body += audio.ampReady() ? "true" : "false";
+  if (voice.heard.length()) {
+    body += ",\"heard\":\"";
+    body += jsonEscape(voice.heard);
+    body += '"';
+  }
+  if (voice.phase == VoicePhase::Done) {
+    body += ",\"reply\":\"";
+    body += jsonEscape(voice.reply);
+    body += '"';
+  }
+  if (voice.error.length()) {
+    body += ",\"error\":\"";
+    body += jsonEscape(voice.error);
+    body += '"';
+  }
+  body += '}';
+
   body += ",\"agents\":[";
   for (int i = 0; i < 3; i++) {
     if (i) body += ',';
@@ -312,9 +381,347 @@ void WebUi::handleAgentsPost() {
   Serial.println(ConfigStore::agentKey(kind));
 }
 
+void WebUi::handleVoiceGet() {
+  VoiceSettings v = configStore.voice();
+  String body;
+  body.reserve(640);
+  body += "{\"keys\":{\"groq\":";
+  body += v.groqKey.length() ? "true" : "false";
+  body += ",\"openai\":";
+  body += v.openaiKey.length() ? "true" : "false";
+  body += "},\"stt_provider\":\"";
+  body += jsonEscape(v.sttProvider);
+  body += "\",\"tts_provider\":\"";
+  body += jsonEscape(v.ttsProvider);
+  body += "\",\"stt_models\":{\"groq\":\"";
+  body += jsonEscape(v.sttModelGroq);
+  body += "\",\"openai\":\"";
+  body += jsonEscape(v.sttModelOpenai);
+  body += "\"},\"tts_models\":{\"groq\":\"";
+  body += jsonEscape(v.ttsModelGroq);
+  body += "\",\"openai\":\"";
+  body += jsonEscape(v.ttsModelOpenai);
+  body += "\"},\"tts_voices\":{\"groq\":\"";
+  body += jsonEscape(v.voiceGroq);
+  body += "\",\"openai\":\"";
+  body += jsonEscape(v.voiceOpenai);
+  body += "\"},\"accent\":\"";
+  body += jsonEscape(v.accent);
+  body += "\",\"agent\":\"";
+  body += jsonEscape(v.agentKey);
+  body += "\",\"stt_ready\":";
+  body += v.sttReady() ? "true" : "false";
+  body += ",\"tts_ready\":";
+  body += v.ttsReady() ? "true" : "false";
+  body += ",\"mic\":";
+  body += audio.micReady() ? "true" : "false";
+  body += ",\"speaker\":";
+  body += audio.ampReady() ? "true" : "false";
+  body += ",\"button_pin\":";
+  body += String(TALK_BUTTON_PIN);
+  body += '}';
+  sendJson(200, body);
+}
+
+// Features: providers, models, voices, accent, and the button's agent. Keys
+// are a separate call so this form never carries a secret.
+void WebUi::handleVoicePost() {
+  if (voiceFlow.busy()) {
+    sendError(409, "Wait for the current voice message to finish.");
+    return;
+  }
+  String body = _server.arg("plain");
+  VoiceSettings in = configStore.voice();
+  struct Field {
+    const char *key;
+    String *into;
+  } fields[] = {
+      {"stt_provider", &in.sttProvider},     {"tts_provider", &in.ttsProvider},
+      {"stt_model_groq", &in.sttModelGroq},  {"stt_model_openai", &in.sttModelOpenai},
+      {"tts_model_groq", &in.ttsModelGroq},  {"tts_model_openai", &in.ttsModelOpenai},
+      {"voice_groq", &in.voiceGroq},         {"voice_openai", &in.voiceOpenai},
+      {"accent", &in.accent},                {"agent", &in.agentKey},
+  };
+  for (Field &f : fields) {
+    String value;
+    if (jsonTopString(body, f.key, value)) {
+      value.trim();
+      *f.into = value;
+    }
+  }
+  if (!voiceProviderKnown(in.sttProvider) || !voiceProviderKnown(in.ttsProvider)) {
+    sendError(400, "Provider must be groq or openai.");
+    return;
+  }
+  if (!validModel(in.sttModelGroq, 80) || !validModel(in.sttModelOpenai, 80) ||
+      !validModel(in.ttsModelGroq, 80) || !validModel(in.ttsModelOpenai, 80)) {
+    sendError(400, "Model names can only use letters, numbers, dashes, dots, and slashes.");
+    return;
+  }
+  if (!validId(in.voiceGroq, 40) || !validId(in.voiceOpenai, 40)) {
+    sendError(400, "Voice names use letters, numbers, dashes, and underscores.");
+    return;
+  }
+  if (!voiceAccentKnown(in.accent)) {
+    sendError(400, "Accent must be american, british, or arabic.");
+    return;
+  }
+  if (ConfigStore::parseAgent(in.agentKey) == AgentKind::Unknown) {
+    sendError(400, "Choose which agent the talk button should reach.");
+    return;
+  }
+  configStore.saveVoiceFeatures(in);
+  VoiceSettings saved = configStore.voice();
+  String response = "{\"ok\":true,\"stt_ready\":";
+  response += saved.sttReady() ? "true" : "false";
+  response += ",\"tts_ready\":";
+  response += saved.ttsReady() ? "true" : "false";
+  response += '}';
+  sendJson(200, response);
+  Serial.println("Saved voice settings");
+}
+
+// {provider, api_key} saves; {provider, clear:true} forgets. Write-only.
+void WebUi::handleVoiceKeys() {
+  if (voiceFlow.busy()) {
+    sendError(409, "Wait for the current voice message to finish.");
+    return;
+  }
+  String body = _server.arg("plain");
+  String provider;
+  String key;
+  bool clear = false;
+  jsonTopString(body, "provider", provider);
+  jsonTopString(body, "api_key", key);
+  jsonTopBool(body, "clear", clear);
+  provider.trim();
+  key.trim();
+  if (!voiceProviderKnown(provider)) {
+    sendError(400, "Provider must be groq or openai.");
+    return;
+  }
+  if (!clear) {
+    if (!validToken(key)) {
+      sendError(400, "That does not look like an API key.");
+      return;
+    }
+    if (provider == VOICE_GROQ && !key.startsWith("gsk_")) {
+      sendError(400, "Groq keys start with gsk_.");
+      return;
+    }
+    if (provider == VOICE_OPENAI && !key.startsWith("sk-")) {
+      sendError(400, "OpenAI keys start with sk-.");
+      return;
+    }
+  }
+  configStore.saveVoiceKey(provider, clear ? String() : key);
+  sendJson(200, "{\"ok\":true}");
+  Serial.print(clear ? "Cleared " : "Saved ");
+  Serial.print(provider);
+  Serial.println(" key");
+}
+
+// Probe the saved key for a provider by listing models.
+void WebUi::handleVoiceTest() {
+  if (voiceFlow.busy()) {
+    sendError(409, "Wait for the current voice message to finish.");
+    return;
+  }
+  if (!portal.staConnected()) {
+    sendError(400, "The board is not on Wi-Fi yet.");
+    return;
+  }
+  String provider;
+  jsonTopString(_server.arg("plain"), "provider", provider);
+  provider.trim();
+  if (!voiceProviderKnown(provider)) {
+    sendError(400, "Provider must be groq or openai.");
+    return;
+  }
+  VoiceSettings v = configStore.voice();
+  const String &key = v.keyFor(provider);
+  if (!key.length()) {
+    sendError(400, "No key saved for that provider yet.");
+    return;
+  }
+  String error;
+  if (!speech.testKey(provider, key, error)) {
+    sendError(502, error.c_str());
+    return;
+  }
+  sendJson(200, "{\"ok\":true}");
+}
+
+// The page's mic button: {action:"start", agent} opens the board mic for
+// that agent; {action:"stop"} sends what was heard.
+void WebUi::handleVoiceTalk() {
+  String body = _server.arg("plain");
+  String action;
+  String agent;
+  jsonTopString(body, "action", action);
+  jsonTopString(body, "agent", agent);
+  String error;
+  bool ok;
+  if (action == "start") {
+    ok = voiceFlow.startFromPage(agent, error);
+  } else if (action == "stop") {
+    ok = voiceFlow.stopFromPage(error);
+  } else {
+    sendError(400, "Action must be start or stop.");
+    return;
+  }
+  if (!ok) {
+    sendError(409, error.c_str());
+    return;
+  }
+  VoiceStatus s = voiceFlow.status();
+  String response = "{\"ok\":true,\"job\":";
+  response += String(s.job);
+  response += ",\"state\":\"";
+  response += voicePhaseName(s.phase);
+  response += "\"}";
+  sendJson(200, response);
+}
+
+void WebUi::dropClip() {
+  if (_clip) free(_clip);
+  _clip = nullptr;
+  _clipLen = 0;
+  _clipCap = 0;
+  _clipTooBig = false;
+  _clipName = "";
+  _clipType = "";
+}
+
+// Multipart upload from the page's microphone, part name "file". Called per
+// chunk while the request body streams in; handleTranscribe runs after.
+void WebUi::handleTranscribeUpload() {
+  HTTPUpload &up = _server.upload();
+  if (up.status == UPLOAD_FILE_START) {
+    dropClip();
+    _clipName = up.filename;
+    _clipType = up.type;
+    return;
+  }
+  if (up.status == UPLOAD_FILE_ABORTED) {
+    dropClip();
+    return;
+  }
+  if (up.status != UPLOAD_FILE_WRITE || _clipTooBig || !up.currentSize) return;
+  if (_clipLen + up.currentSize > _clipCap) {
+    size_t next = _clipCap ? _clipCap * 2 : CLIP_FIRST_ALLOC;
+    while (next < _clipLen + up.currentSize) next *= 2;
+    if (next > CLIP_MAX_BYTES) {
+      _clipTooBig = true;
+      return;
+    }
+    uint8_t *grown = static_cast<uint8_t *>(
+        psramFound() ? heap_caps_realloc(_clip, next, MALLOC_CAP_SPIRAM) : realloc(_clip, next));
+    if (!grown) {
+      _clipTooBig = true;
+      return;
+    }
+    _clip = grown;
+    _clipCap = next;
+  }
+  memcpy(_clip + _clipLen, up.buf, up.currentSize);
+  _clipLen += up.currentSize;
+}
+
+void WebUi::handleTranscribe() {
+  if (_clipTooBig) {
+    dropClip();
+    sendError(413, "That recording is too long for the board. Keep it under a minute.");
+    return;
+  }
+  if (!_clip || !_clipLen) {
+    dropClip();
+    sendError(400, "No audio arrived. Try recording again.");
+    return;
+  }
+  if (!portal.staConnected()) {
+    dropClip();
+    sendError(400, "The board is not on Wi-Fi yet.");
+    return;
+  }
+  VoiceSettings voice = configStore.voice();
+  if (!voice.sttReady()) {
+    dropClip();
+    sendError(400, "Add the speech-to-text provider's API key under Settings › Voice.");
+    return;
+  }
+  // The API infers the codec from the extension; keep it to what it accepts.
+  String name = _clipName;
+  name.toLowerCase();
+  const char *exts[] = {".webm", ".ogg", ".mp4", ".m4a", ".mp3", ".wav", ".flac", ".mpeg", ".mpga"};
+  bool known = false;
+  for (const char *ext : exts) known = known || name.endsWith(ext);
+  if (!known) {
+    name = "clip.";
+    if (_clipType.indexOf("mp4") >= 0 || _clipType.indexOf("aac") >= 0) name += "mp4";
+    else if (_clipType.indexOf("ogg") >= 0) name += "ogg";
+    else if (_clipType.indexOf("wav") >= 0) name += "wav";
+    else name += "webm";
+  }
+  String text;
+  String error;
+  bool ok = speech.transcribe(voice, _clip, _clipLen, name, _clipType, text, error);
+  size_t bytes = _clipLen;
+  dropClip();
+  if (!ok) {
+    sendError(502, error.c_str());
+    return;
+  }
+  String body = "{\"ok\":true,\"text\":\"";
+  body += jsonEscape(text);
+  body += "\",\"bytes\":";
+  body += String(bytes);
+  body += '}';
+  sendJson(200, body);
+  Serial.print("Voice: browser clip heard \"");
+  Serial.print(text);
+  Serial.println("\"");
+}
+
+// {text} -> a finite WAV the page plays through its own speaker. The key
+// stays on the board; the page only ever sees audio.
+void WebUi::handleSay() {
+  if (!portal.staConnected()) {
+    sendError(400, "The board is not on Wi-Fi yet.");
+    return;
+  }
+  String text;
+  jsonTopString(_server.arg("plain"), "text", text);
+  text.trim();
+  if (!text.length()) {
+    sendError(400, "Nothing to say.");
+    return;
+  }
+  VoiceSettings voice = configStore.voice();
+  if (!voice.ttsReady()) {
+    sendError(400, "Add the text-to-speech provider's API key under Settings › Voice.");
+    return;
+  }
+  WavClip clip;
+  String error;
+  if (!speech.synthesize(voice, text, clip, error)) {
+    sendError(502, error.c_str());
+    return;
+  }
+  _server.sendHeader("Cache-Control", "no-store");
+  _server.setContentLength(clip.len);
+  _server.send(200, "audio/wav", "");
+  _server.sendContent(reinterpret_cast<const char *>(clip.data), clip.len);
+  wavFree(clip);
+}
+
 void WebUi::handleChat() {
   if (chatClient.phase() == Phase::Listening) {
     sendError(409, "Already listening for a reply.");
+    return;
+  }
+  if (voiceFlow.busy()) {
+    sendError(409, "The button is mid-conversation. Give it a moment.");
     return;
   }
   if (!portal.staConnected()) {
@@ -356,8 +763,23 @@ void WebUi::handleChat() {
   }
 
   ListenStatus current = chatClient.status();
+  // "speak": the page's speaker toggle is on, so read this reply aloud too.
+  bool speak = false;
+  String speakNote;
+  jsonTopBool(body, "speak", speak);
+  if (speak && !voiceFlow.speakWhenDone(current.job, ConfigStore::agentKey(kind), speakNote)) {
+    Serial.print("Chat: reply will not be spoken: ");
+    Serial.println(speakNote);
+  }
   String response = "{\"ok\":true,\"state\":\"listening\",\"job\":";
   response += String(current.job);
+  response += ",\"speaking\":";
+  response += (speak && !speakNote.length()) ? "true" : "false";
+  if (speakNote.length()) {
+    response += ",\"speak_note\":\"";
+    response += jsonEscape(speakNote);
+    response += '"';
+  }
   response += '}';
   sendJson(200, response);
 }

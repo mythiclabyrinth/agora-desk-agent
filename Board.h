@@ -9,6 +9,27 @@
 constexpr uint8_t LED_PIN = 5;
 constexpr uint8_t BUZZER_PIN = 4;
 
+// Push-to-talk button between GPIO 6 and GND (internal pull-up).
+constexpr uint8_t TALK_BUTTON_PIN = 6;
+
+// INMP441 microphone on I2S port 0. VDD 3V3, GND, L/R to GND (left slot).
+constexpr int8_t MIC_BCLK_PIN = 12;   // SCK
+constexpr int8_t MIC_WS_PIN = 11;     // WS
+constexpr int8_t MIC_DATA_PIN = 13;   // SD
+
+// MAX98357A amplifier on I2S port 1, 4 ohm speaker across the output.
+// VIN 5V, GND, SD and GAIN left unconnected.
+constexpr int8_t AMP_BCLK_PIN = 16;   // BCLK
+constexpr int8_t AMP_LRC_PIN = 15;    // LRC
+constexpr int8_t AMP_DATA_PIN = 17;   // DIN
+
+// 16 kHz mono is what Whisper wants and keeps a 15 s clip under 500 KB.
+constexpr uint32_t MIC_SAMPLE_RATE = 16000;
+constexpr unsigned long RECORD_MAX_MS = 15000;
+constexpr unsigned long RECORD_MIN_MS = 400;
+// The INMP441 sits well below full scale for speech at desk distance.
+constexpr int MIC_GAIN = 3;
+
 constexpr char AP_SSID[] = "Esp32-Agent";
 constexpr char AP_PASSWORD[] = "agent-setup";
 constexpr char MDNS_HOST[] = "esp32-agent";

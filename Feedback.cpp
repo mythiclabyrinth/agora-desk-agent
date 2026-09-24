@@ -60,7 +60,11 @@ void Feedback::blink() {
   digitalWrite(LED_PIN, _blinkOn ? HIGH : LOW);
 }
 
-void Feedback::follow(Phase phase) {
+void Feedback::tick() {
+  beep(30);
+}
+
+void Feedback::follow(Phase phase, bool hold) {
   if (phase != _phase) {
     Phase previous = _phase;
     _phase = phase;
@@ -79,5 +83,12 @@ void Feedback::follow(Phase phase) {
       allOff();
     }
   }
+  if (hold) {
+    digitalWrite(LED_PIN, HIGH);
+    _held = true;
+    return;
+  }
   if (_phase == Phase::Listening) blink();
+  else if (_held) digitalWrite(LED_PIN, LOW);
+  _held = false;
 }

@@ -5,9 +5,29 @@
 // Agora channel you configured, mentioning the agent you picked, then
 // listens on that channel until the agent's reply lands.
 //
-// Wire an LED (with a resistor) from GPIO 5 to ground, and an active
-// buzzer from GPIO 4 to ground. Those are the two pins just above RST
-// on this ESP32-S3. Leave GPIO 3 and GPIO 46 alone; they are strapping pins.
+// Hold the talk button and speak, and the same thing happens by voice:
+// the INMP441 records, Groq (or OpenAI) turns it into text, the reply comes
+// back through the same provider's speech and the MAX98357A speaker. Add the
+// key under Settings › Voice.
+//
+// The chat page can do the same without the desk hardware: the browser
+// records with its own microphone, the board forwards the clip for
+// transcription and fetches the spoken reply as a WAV for the page to play
+// (/api/voice/transcribe, /api/voice/say). Keys never leave the board.
+// Browsers only share the mic with secure pages, so over plain HTTP that
+// needs Chrome's "insecure origin as secure" flag for the board's address.
+//
+// Wiring (ESP32-S3, right-hand header):
+//   LED (with resistor)  GPIO 5 -> LED -> GND
+//   Active buzzer        GPIO 4 -> buzzer -> GND
+//   Talk button          GPIO 6 -> button -> GND (internal pull-up)
+//   INMP441 mic          SCK GPIO 12, WS GPIO 11, SD GPIO 13, L/R -> GND, VDD 3V3
+//   MAX98357A amp        BCLK GPIO 16, LRC GPIO 15, DIN GPIO 17, VIN 5V, speaker on +/-
+// Leave GPIO 3 and GPIO 46 alone; they are strapping pins.
+//
+// Board settings: ESP32S3 Dev Module, PSRAM "OPI PSRAM" (the N16R8 has
+// 8 MB; recordings live there), Flash Size 16MB, Partition Scheme
+// "16M Flash (3MB APP/9.9MB FATFS)" — the default 1.3 MB app slot is nearly full.
 //
 // First boot opens a setup network: Esp32-Agent / agent-setup.
 // Open http://192.168.4.1 — once Wi-Fi joins, also http://esp32-agent.local.
@@ -16,6 +36,7 @@
 #include "Config.h"
 #include "Feedback.h"
 #include "Portal.h"
+#include "VoiceFlow.h"
 #include "WebUi.h"
 
 void setup() {
@@ -30,6 +51,7 @@ void setup() {
   feedback.begin();
   configStore.begin();
   portal.begin();
+  voiceFlow.begin();
   webUi.begin();
 
   Serial.println("Ready");
@@ -38,6 +60,7 @@ void setup() {
 void loop() {
   portal.update();
   chatClient.update();
-  feedback.follow(chatClient.phase());
+  voiceFlow.update();
+  feedback.follow(chatClient.phase(), voiceFlow.holdingLed());
   webUi.handle();
 }
