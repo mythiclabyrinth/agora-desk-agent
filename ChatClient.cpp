@@ -1,0 +1,273 @@
+#include "ChatClient.h"
+
+#include <HTTPClient.h>
+#include <WiFi.h>
+#include <WiFiClient.h>
+#include <WiFiClientSecure.h>
+
+#include <ctype.h>
+
+#include "Board.h"
+#include "Json.h"
+
+namespace {
+
+struct ReplyPick {
+  const AgentSettings *agent;
+  long long afterId = 0;
+  long long bestId = 0;
+  String text;
+  bool found = false;
+};
+
+String slugify(const String &name) {
+  String out;
+  bool dash = false;
+  for (unsigned i = 0; i < name.length(); i++) {
+    char c = name[i];
+    if (isalnum((unsigned char)c)) {
+      out += (char)tolower(c);
+      dash = false;
+    } else if (!dash && out.length()) {
+      out += '-';
+      dash = true;
+    }
+  }
+  while (out.endsWith("-")) out.remove(out.length() - 1);
+  return out;
+}
+
+bool sameAgent(const JsonMessage &message, const AgentSettings &agent) {
+  if (message.authorType != "agent") return false;
+  if (agent.agentId.length()) return message.authorId.equalsIgnoreCase(agent.agentId);
+  return message.authorName.equalsIgnoreCase(agent.name);
+}
+
+void considerReply(const JsonMessage &message, void *ctx) {
+  auto *pick = static_cast<ReplyPick *>(ctx);
+  if (!message.hasId || message.id <= pick->afterId) return;
+  if (!sameAgent(message, *pick->agent)) return;
+  // The first reply after our message, not a later follow-up that landed
+  // in the same poll.
+  if (pick->found && message.id >= pick->bestId) return;
+  pick->found = true;
+  pick->bestId = message.id;
+  pick->text = message.hasText ? message.text : "";
+}
+
+String trimUrl(String url) {
+  url.trim();
+  while (url.endsWith("/")) url.remove(url.length() - 1);
+  return url;
+}
+
+String clip(const String &body) {
+  String text = body;
+  text.replace("\r", " ");
+  text.replace("\n", " ");
+  if (text.length() > 160) {
+    text.remove(160);
+    text += "...";
+  }
+  return text;
+}
+
+}  // namespace
+
+ChatClient chatClient;
+
+bool ChatClient::start(const String &agentKey, const AgentSettings &agent, const String &text) {
+  if (_phase == Phase::Listening) return false;
+  _job++;
+  _agent = agent;
+  _agentKey = agentKey;
+  _text = text;
+  _reply = "";
+  _error = "";
+  _sentId = 0;
+  _posted = false;
+  _started = millis();
+  _nextPoll = 0;
+  _phase = Phase::Listening;
+  Serial.print("Listening for ");
+  Serial.println(agent.name);
+  return true;
+}
+
+void ChatClient::update() {
+  if (_phase != Phase::Listening) return;
+  if (millis() - _started > LISTEN_TIMEOUT_MS) {
+    fail("No reply yet. The agent may still be working in Agora.");
+    return;
+  }
+  if (WiFi.status() != WL_CONNECTED) {
+    fail("Wi-Fi dropped while listening.");
+    return;
+  }
+  if (!_posted) {
+    postMessage();
+    return;
+  }
+  if (millis() < _nextPoll) return;
+  _nextPoll = millis() + LISTEN_POLL_MS;
+  pollReply();
+}
+
+Phase ChatClient::phase() const {
+  return _phase;
+}
+
+ListenStatus ChatClient::status() const {
+  ListenStatus current;
+  current.phase = _phase;
+  current.job = _job;
+  current.from = _agent.name;
+  current.text = _text;
+  current.reply = _reply;
+  current.error = _error;
+  current.waitedMs = _started ? millis() - _started : 0;
+  current.agentKey = _agentKey;
+  return current;
+}
+
+String ChatClient::endpoint() const {
+  return trimUrl(_agent.url) + "/api/channels/" + _agent.channel + "/messages";
+}
+
+String ChatClient::mentionText() const {
+  String mention = _agent.agentId.length() ? _agent.agentId : slugify(_agent.name);
+  String prefix = "@";
+  prefix += mention;
+  if (_text.startsWith(prefix)) return _text;
+  prefix += " ";
+  prefix += _text;
+  return prefix;
+}
+
+void ChatClient::forgetToken() {
+  _agent.token = "";
+}
+
+void ChatClient::succeed(const String &reply) {
+  _reply = reply;
+  if (_reply.length() > MAX_REPLY_CHARS) {
+    _reply.remove(MAX_REPLY_CHARS);
+    _reply += "\n\n[truncated]";
+  }
+  _phase = Phase::Done;
+  forgetToken();
+  Serial.print("Reply from ");
+  Serial.println(_agent.name);
+}
+
+void ChatClient::fail(const String &message) {
+  _error = message;
+  _phase = Phase::Failed;
+  forgetToken();
+  Serial.println(message);
+}
+
+ChatClient::HttpResponse ChatClient::finishExchange(HTTPClient &http, bool post, const String &payload) {
+  HttpResponse result;
+  http.setTimeout(8000);
+  http.setConnectTimeout(10000);
+  String authorization = "Bearer ";
+  authorization += _agent.token;
+  http.addHeader("Authorization", authorization);
+  http.addHeader("User-Agent", "Esp32Agent");
+  if (post) http.addHeader("Content-Type", "application/json");
+
+  int status = post ? http.POST(payload) : http.GET();
+  result.status = status;
+  if (status > 0) result.body = http.getString();
+  else result.error = HTTPClient::errorToString(status);
+  http.end();
+  return result;
+}
+
+ChatClient::HttpResponse ChatClient::exchange(bool post, const String &url, const String &payload) {
+  // Keep the TCP client alive until HTTPClient::end(). Constructing the
+  // TLS client only for https avoids the SSL buffer on ordinary LAN calls.
+  if (url.startsWith("https://")) {
+    WiFiClientSecure tls;
+    // Desk board, not a browser: skip CA checks so a LAN or self-signed
+    // Agora still answers. The token still travels only to that host.
+    tls.setInsecure();
+    HTTPClient http;
+    if (!http.begin(tls, url)) {
+      HttpResponse result;
+      result.error = "Could not open the Agora URL.";
+      return result;
+    }
+    return finishExchange(http, post, payload);
+  }
+
+  WiFiClient plain;
+  HTTPClient http;
+  if (!http.begin(plain, url)) {
+    HttpResponse result;
+    result.error = "Could not open the Agora URL.";
+    return result;
+  }
+  return finishExchange(http, post, payload);
+}
+
+void ChatClient::postMessage() {
+  if (ESP.getFreeHeap() < 40000) {
+    fail("Not enough memory to send.");
+    return;
+  }
+
+  String payload = "{\"text\":\"";
+  payload += jsonEscape(mentionText());
+  payload += "\"}";
+  HttpResponse response = exchange(true, endpoint(), payload);
+  if (response.status < 200 || response.status >= 300) {
+    String message = "Agora rejected the message";
+    if (response.status > 0) {
+      message += " (";
+      message += String(response.status);
+      message += ")";
+    }
+    if (response.body.length()) {
+      message += ": ";
+      message += clip(response.body);
+    } else if (response.error.length()) {
+      message += ": ";
+      message += response.error;
+    }
+    fail(message);
+    return;
+  }
+
+  if (!jsonTopLong(response.body, "id", _sentId) || _sentId <= 0) {
+    fail("Agora accepted the message, but its id could not be read.");
+    return;
+  }
+  _posted = true;
+  _nextPoll = millis() + 1000;
+  Serial.print("Posted ");
+  Serial.println((long)_sentId);
+}
+
+void ChatClient::pollReply() {
+  if (ESP.getFreeHeap() < 40000) {
+    fail("Not enough memory to keep listening.");
+    return;
+  }
+
+  HttpResponse response = exchange(false, endpoint() + "?limit=15", "");
+  if (response.status < 200 || response.status >= 300) {
+    Serial.print("Listen poll ");
+    Serial.println(response.status);
+    return;
+  }
+
+  ReplyPick pick;
+  pick.agent = &_agent;
+  pick.afterId = _sentId;
+  if (!jsonEachMessage(response.body, considerReply, &pick) || !pick.found) return;
+
+  if (!pick.text.length()) pick.text = "(The agent replied without text.)";
+  succeed(pick.text);
+}
