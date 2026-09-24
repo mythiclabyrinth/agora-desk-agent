@@ -94,36 +94,112 @@ uint16_t le16(const uint8_t *p) {
   return uint16_t(p[0]) | (uint16_t(p[1]) << 8);
 }
 
-// Read exactly n bytes or give up when the stream stalls or closes.
-bool readExact(WiFiClient *stream, uint8_t *out, size_t n) {
-  size_t got = 0;
-  unsigned long last = millis();
-  while (got < n) {
-    int available = stream->available();
-    if (available > 0) {
-      size_t take = min(static_cast<size_t>(available), n - got);
-      int read = stream->read(out + got, take);
-      if (read > 0) {
-        got += read;
+// HTTPClient::getStreamPtr() is the raw socket. Both providers stream speech
+// with Transfer-Encoding: chunked, so the bytes start with a hex size line,
+// not "RIFF". This reader strips that framing (or passes plain bodies through).
+class BodyReader {
+ public:
+  BodyReader(WiFiClient *stream, bool chunked) : _stream(stream), _chunked(chunked) {}
+
+  // Up to n bytes; 0 while waiting, -1 once the body is finished or the socket dropped.
+  int read(uint8_t *out, size_t n) {
+    if (_done) return -1;
+    if (_chunked && _inChunk == 0 && !nextChunk()) return _done ? -1 : 0;
+    int available = _stream->available();
+    if (available <= 0) {
+      if (!_stream->connected() && _stream->available() <= 0) {
+        _done = true;
+        return -1;
+      }
+      return 0;
+    }
+    size_t take = min(static_cast<size_t>(available), n);
+    if (_chunked) take = min(take, _inChunk);
+    int got = _stream->read(out, take);
+    if (got > 0 && _chunked) _inChunk -= got;
+    return got;
+  }
+
+  // Exactly n bytes, or false when the body ends or stalls first.
+  bool readExact(uint8_t *out, size_t n) {
+    size_t got = 0;
+    unsigned long last = millis();
+    while (got < n) {
+      int r = read(out + got, n - got);
+      if (r < 0) return false;
+      if (r > 0) {
+        got += r;
         last = millis();
         continue;
       }
+      if (millis() - last > STREAM_TIMEOUT_MS) return false;
+      delay(1);
     }
-    if (!stream->connected() && stream->available() <= 0) return false;
-    if (millis() - last > STREAM_TIMEOUT_MS) return false;
-    delay(1);
+    return true;
   }
-  return true;
-}
 
-bool skipBytes(WiFiClient *stream, size_t n) {
-  uint8_t bin[256];
-  while (n) {
-    size_t take = min(n, sizeof(bin));
-    if (!readExact(stream, bin, take)) return false;
-    n -= take;
+  bool skip(size_t n) {
+    uint8_t bin[256];
+    while (n) {
+      size_t take = min(n, sizeof(bin));
+      if (!readExact(bin, take)) return false;
+      n -= take;
+    }
+    return true;
   }
-  return true;
+
+ private:
+  // Consume "<hex-size>[;ext]\r\n" (preceded by the previous chunk's CRLF).
+  // Returns true with _inChunk set, or false when still waiting on bytes.
+  bool nextChunk() {
+    unsigned long last = millis();
+    String line;
+    while (true) {
+      if (_stream->available() > 0) {
+        int c = _stream->read();
+        if (c < 0) continue;
+        last = millis();
+        if (c == '\n') {
+          line.trim();
+          if (!line.length()) continue;  // CRLF that closed the previous chunk
+          _inChunk = strtoul(line.c_str(), nullptr, 16);
+          if (_inChunk == 0) _done = true;  // terminal chunk; trailers are irrelevant
+          return _inChunk > 0;
+        }
+        if (c != '\r' && line.length() < 32) line += static_cast<char>(c);
+        continue;
+      }
+      if (!_stream->connected() && _stream->available() <= 0) {
+        _done = true;
+        return false;
+      }
+      if (millis() - last > STREAM_TIMEOUT_MS) {
+        _done = true;
+        return false;
+      }
+      delay(1);
+    }
+  }
+
+  WiFiClient *_stream;
+  bool _chunked;
+  size_t _inChunk = 0;
+  bool _done = false;
+};
+
+// What the board saw when it expected a WAV header, kept printable for the UI.
+String peek(const uint8_t *bytes, size_t n) {
+  String out;
+  for (size_t i = 0; i < n; i++) {
+    char c = static_cast<char>(bytes[i]);
+    if (c >= 32 && c < 127) out += c;
+    else {
+      char hex[6];
+      snprintf(hex, sizeof(hex), "\\x%02X", bytes[i]);
+      out += hex;
+    }
+  }
+  return out;
 }
 
 String clipForSpeech(const String &text) {
@@ -372,6 +448,8 @@ bool Speech::speakOnce(const String &provider, const String &key, const String &
   }
   http.addHeader("Authorization", "Bearer " + key);
   http.addHeader("Content-Type", "application/json");
+  const char *wanted[] = {"Transfer-Encoding", "Content-Type"};
+  http.collectHeaders(wanted, 2);
   int status = http.POST(payload);
   if (status <= 0) {
     error = "Speech failed: ";
@@ -387,17 +465,28 @@ bool Speech::speakOnce(const String &provider, const String &key, const String &
 
   // Both providers stream WAV; Groq uses 0xFFFFFFFF sizes and may slip a LIST
   // chunk in before the data, so walk the chunks instead of trusting 44 bytes.
-  WiFiClient *stream = http.getStreamPtr();
+  String te = http.header("Transfer-Encoding");
+  te.toLowerCase();
+  BodyReader body(http.getStreamPtr(), te.indexOf("chunked") >= 0);
   uint8_t hdr[12];
-  bool ok = readExact(stream, hdr, sizeof(hdr)) && !memcmp(hdr, "RIFF", 4) && !memcmp(hdr + 8, "WAVE", 4);
-  if (!ok) error = "Speech response was not a WAV file.";
+  bool ok = body.readExact(hdr, sizeof(hdr));
+  if (!ok) {
+    error = "Speech response ended before any audio arrived.";
+  } else if (memcmp(hdr, "RIFF", 4) || memcmp(hdr + 8, "WAVE", 4)) {
+    ok = false;
+    error = "Speech response was not a WAV file (";
+    error += http.header("Content-Type");
+    error += ", starts \"";
+    error += peek(hdr, sizeof(hdr));
+    error += "\").";
+  }
   bool haveFmt = false;
   uint32_t rate = 0;
   uint16_t channels = 0;
   uint16_t bits = 0;
   while (ok) {
     uint8_t ch[8];
-    if (!readExact(stream, ch, sizeof(ch))) {
+    if (!body.readExact(ch, sizeof(ch))) {
       ok = false;
       error = "Speech stream ended early.";
       break;
@@ -410,7 +499,7 @@ bool Speech::speakOnce(const String &provider, const String &key, const String &
         break;
       }
       uint8_t fmt[64];
-      if (!readExact(stream, fmt, size)) {
+      if (!body.readExact(fmt, size)) {
         ok = false;
         error = "Speech stream ended early.";
         break;
@@ -419,7 +508,7 @@ bool Speech::speakOnce(const String &provider, const String &key, const String &
       rate = le32(fmt + 4);
       bits = le16(fmt + 14);
       haveFmt = true;
-      if (size & 1) skipBytes(stream, 1);
+      if (size & 1) body.skip(1);
     } else if (!memcmp(ch, "data", 4)) {
       if (!haveFmt || bits != 16 || !sink.format(rate, channels, bits, sink.ctx)) {
         ok = false;
@@ -431,9 +520,10 @@ bool Speech::speakOnce(const String &provider, const String &key, const String &
       uint8_t pcm[1024];
       unsigned long last = millis();
       while (untilClose || remaining) {
-        int available = stream->available();
-        if (available <= 0) {
-          if (!stream->connected()) break;
+        size_t want = untilClose ? sizeof(pcm) : min(sizeof(pcm), remaining);
+        int got = body.read(pcm, want);
+        if (got < 0) break;  // body finished: normal end for an open-ended data chunk
+        if (got == 0) {
           if (millis() - last > STREAM_TIMEOUT_MS) {
             ok = false;
             error = "Speech stream stalled.";
@@ -442,10 +532,6 @@ bool Speech::speakOnce(const String &provider, const String &key, const String &
           delay(1);
           continue;
         }
-        size_t take = min(static_cast<size_t>(available), sizeof(pcm));
-        if (!untilClose) take = min(take, remaining);
-        int got = stream->read(pcm, take);
-        if (got <= 0) continue;
         last = millis();
         if (!sink.pcm(pcm, got, sink.ctx)) {
           ok = false;
@@ -456,7 +542,7 @@ bool Speech::speakOnce(const String &provider, const String &key, const String &
       }
       break;
     } else {
-      if (size == 0xFFFFFFFFu || !skipBytes(stream, size + (size & 1))) {
+      if (size == 0xFFFFFFFFu || !body.skip(size + (size & 1))) {
         ok = false;
         error = "Speech WAV is malformed.";
         break;
