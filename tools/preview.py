@@ -4,15 +4,19 @@ Run: python3 tools/preview.py, then open http://127.0.0.1:8765.
 Add ?scenario=offline or ?scenario=empty to exercise connection/setup states,
 or ?scenario=voice to watch a button conversation land in the chat.
 """
+import gzip
 import json
 import math
 import struct
+import sys
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlparse
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / 'web'))
+import build  # noqa: E402  (web/build.py assembles the page for the board and for us)
 AGENTS = [dict(id=k, title=k.title(), name=k.title(), agent_id=k+'-cli',
                url='http://192.168.0.20:4470' if k == 'claude' else '',
                channel='desk-general' if k == 'claude' else '',
@@ -57,9 +61,16 @@ class Handler(BaseHTTPRequestHandler):
         offline = 'scenario=offline' in scenario
         empty = 'scenario=empty' in scenario
         if path == '/':
-            page = (ROOT / 'Page.h').read_text().split('R"ESP32PAGE(', 1)[1].split(')ESP32PAGE"', 1)[0].encode()
+            # Assembled from web/ on every request so edits show on reload, and
+            # served gzipped exactly as the board does.
+            html = build.assemble()
+            if build.current_digest() != build.digest(html):
+                print('note: Page.h is stale; run python3 web/build.py before flashing', flush=True)
+            page = gzip.compress(html.encode('utf-8'), compresslevel=9, mtime=0)
             self.send_response(200)
             self.send_header('Content-Type', 'text/html; charset=utf-8')
+            self.send_header('Content-Encoding', 'gzip')
+            self.send_header('Cache-Control', 'no-store')
             self.send_header('Content-Length', str(len(page)))
             self.end_headers()
             self.wfile.write(page)

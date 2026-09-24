@@ -29,6 +29,10 @@
 // 8 MB; recordings live there), Flash Size 16MB, Partition Scheme
 // "16M Flash (3MB APP/9.9MB FATFS)" — the default 1.3 MB app slot is nearly full.
 //
+// The web page lives in web/ (index.html, styles.css, js/*.js). Page.h is
+// generated from it, gzipped: run `python3 web/build.py` after editing web/
+// and before uploading. `python3 tools/preview.py` serves web/ locally.
+//
 // First boot opens a setup network: Esp32-Agent / agent-setup.
 // Open http://192.168.4.1 — once Wi-Fi joins, also http://esp32-agent.local.
 

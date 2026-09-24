@@ -128,9 +128,12 @@ void WebUi::sendError(int code, const char *message) {
   sendJson(code, body);
 }
 
+// The page ships gzipped (web/build.py); every browser inflates it, and it
+// is a third of the flash and airtime of the plain HTML.
 void WebUi::handleIndex() {
   _server.sendHeader("Cache-Control", "no-store");
-  _server.send_P(200, "text/html; charset=utf-8", INDEX_HTML);
+  _server.sendHeader("Content-Encoding", "gzip");
+  _server.send_P(200, "text/html; charset=utf-8", reinterpret_cast<PGM_P>(INDEX_HTML_GZ), INDEX_HTML_GZ_LEN);
 }
 
 void WebUi::handleCaptive() {
