@@ -2,12 +2,13 @@
 
 #include <Arduino.h>
 
+#include "Board.h"
 #include "Button.h"
 #include "Config.h"
 #include "Mic.h"
 
 // Hold the button and talk; let go to send. Or say the wake phrase, talk,
-// and pause. The clip is transcribed, sent through the same ChatClient the
+// and pause (or click the button once to send now, twice to cancel). The clip is transcribed, sent through the same ChatClient the
 // web page uses, and the reply is spoken through the desk speaker.
 enum class VoicePhase { Idle, Recording, Transcribing, Waiting, Speaking, Done, Failed };
 
@@ -27,6 +28,8 @@ struct VoiceStatus {
   // Failed because the clip held nothing usable (too short, empty, only the
   // wake phrase): "say it again" rather than a fault.
   bool missed = false;
+  // Idle because the user cancelled the recording (a double click).
+  bool cancelled = false;
 };
 
 class VoiceFlow {
@@ -36,8 +39,6 @@ class VoiceFlow {
   VoiceStatus status() const;
   // Cheap phase check for code that runs every loop pass (status() copies strings).
   VoicePhase phase() const { return _phase; }
-  // True while the mic is open or a clip is being sent; the LED stays lit.
-  bool holdingLed() const;
   bool busy() const;
   // Called on every phase change. Transcribing and Speaking block loop() as
   // soon as they begin, so polling alone would never see them.
@@ -53,22 +54,29 @@ class VoiceFlow {
   bool wakeListening() const;
   // The detector is armed right now (policy, not the brief deaf windows).
   bool wakeArmed() const { return _wakeArmed; }
-  // Unmute / mute wake listening and save it; the page and the mute button
-  // both come through here.
+  // Unmute / mute wake listening and save it; the page and toggleMute() both
+  // come through here.
   bool setWakeEnabled(bool on, String &error);
-  void setWakeSensitivity(const String &level);
+  // The dial's long press: flips mute with a beep, or drops an open recording
+  // and mutes.
+  void toggleMute();
+  // 0-255 (WakeWord's unit); saved, clamped, and applied at once.
+  void setWakeCutoff(uint8_t cutoff);
 
  private:
   void readButtons();
   void onPress();
   void onRelease();
-  void onMuteButton();
+  // A wake or page recording is open: the talk button counts clicks and does not record.
+  bool clickRecording() const;
   void updateWake();
   void onWake(uint32_t samplePos);
   bool wakeReady();
   bool wakeHeardSpeech(const VadStats &now) const;
   void checkWakeEnd();
-  void cancelWake(const char *why);
+  // Drops the open recording without a word to the agent. `byUser` marks it
+  // for the status (the LCD says "Cancelled"; a missed wake stays quiet).
+  void cancelRecording(const char *why, bool byUser = false);
   bool beginRecording(const String &agentKey, VoiceSource source, String &error, unsigned long preRollMs);
   void finishRecording();
   void sendRecording();
@@ -80,6 +88,7 @@ class VoiceFlow {
   VoicePhase _phase = VoicePhase::Idle;
   void (*_onPhase)() = nullptr;
   bool _missed = false;
+  bool _cancelled = false;
   VoiceSource _source = VoiceSource::Button;
   uint32_t _job = 0;
   uint32_t _chatJob = 0;
@@ -91,7 +100,7 @@ class VoiceFlow {
   unsigned long _speakAt = 0;
 
   DebouncedButton _talk;
-  DebouncedButton _muteButton;
+  ClickCounter _clicks{TALK_DOUBLE_CLICK_MS};
   bool _wakeArmed = false;
 
   // Wake recording endpointing: VAD counters from when judging began.

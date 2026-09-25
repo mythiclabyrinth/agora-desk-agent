@@ -508,8 +508,8 @@ async function renderVoice() {
   root.append(stack);
   activate(panes[voiceTab] ? voiceTab : 'credentials');
 }
-// Wake word: one setting shared with the desk's mute button (wake_enabled == not muted). The blue LED shows when
-// the desk mic is listening. The meter reads the detector's smoothed score from /api/status, for tuning.
+// Wake word: one setting shared with the desk dial's long press (wake_enabled == not muted). The blue LED
+// shows when the desk mic is listening. The meter reads the detector's smoothed score from /api/status.
 function wakePanel(v) {
   const phrase = v.wake_phrase || 'the wake word';
   const p = panel(
@@ -520,35 +520,33 @@ function wakePanel(v) {
   const state = el('span', 'badge');
   const toggle = button('', 'ghost sm');
   row.append(state, toggle);
-  const sens = selectField(
-    'Sensitivity',
-    [
-      ['low', 'Low — fewer false wakes'],
-      ['medium', 'Medium — the model’s default'],
-      ['high', 'High — hears you from further away'],
-    ],
-    v.wake_sensitivity || 'medium',
-  );
+  // The detector wakes when its score passes the cutoff, so a lower cutoff reaches further.
+  const cut = cutoffField(v.wake_cutoff);
   const meter = el('div', 'wake-meter');
   meter.id = 'wake-meter';
   meter.setAttribute('role', 'meter');
   meter.setAttribute('aria-label', 'Wake word score');
   meter.setAttribute('aria-valuemin', '0');
   meter.setAttribute('aria-valuemax', '100');
-  meter.append(el('span'));
+  const tick = el('i', 'wake-tick');
+  meter.append(el('span'), tick);
   const meterWrap = el('label', '', 'Live score');
   meterWrap.append(
     meter,
-    el('small', '', 'How sure the desk is that it just heard “' + phrase + '”. Useful for tuning.'),
+    el(
+      'small',
+      '',
+      'How sure the desk is that it just heard “' + phrase + '”. It wakes when the score passes the line.',
+    ),
   );
   const status = el('p', 'note');
   status.setAttribute('role', 'status');
   const hint = el(
     'p',
     'note',
-    'The blue light on the desk is on while its microphone is listening. The mute button (GPIO ' +
-      (v.wake_button_pin ?? 46) +
-      ') switches the wake word off and on; the talk button works either way.',
+    'The blue light on the desk is on while its microphone is listening. Hold the dial’s knob to mute or ' +
+      'unmute; a short press says which agent is selected. While it records, click the talk button once to ' +
+      'send now or twice to cancel. The talk button works either way.',
   );
   let on = !!v.wake_enabled;
   const sync = () => {
@@ -557,7 +555,7 @@ function wakePanel(v) {
     toggle.textContent = on ? 'Mute' : 'Listen for “' + phrase + '”';
     toggle.setAttribute('aria-pressed', String(on));
     toggle.disabled = !v.wake_available;
-    sens.select.disabled = !v.wake_available;
+    cut.input.disabled = !v.wake_available;
     meterWrap.hidden = !on || !v.wake_available;
     if (!v.wake_available)
       note(status, 'The wake word engine did not start on this board. The talk button still works.', true);
@@ -570,7 +568,8 @@ function wakePanel(v) {
       const data = await api('/api/voice/wake', body);
       on = !!data.wake.enabled;
       v.wake_enabled = on;
-      v.wake_sensitivity = data.wake.sensitivity;
+      v.wake_cutoff = data.wake.cutoff;
+      cut.set(data.wake.cutoff);
       note(status, done);
       status.classList.add('good');
       trackWake(data.wake);
@@ -583,12 +582,42 @@ function wakePanel(v) {
   toggle.addEventListener('click', () =>
     save({ enabled: !on }, !on ? 'Listening for “' + phrase + '”.' : 'Wake word muted.'),
   );
-  sens.select.addEventListener('change', () =>
-    save({ sensitivity: sens.select.value }, 'Sensitivity saved.'),
-  );
-  p.append(row, sens.wrap, meterWrap, status, hint);
+  cut.input.addEventListener('input', () => {
+    cut.show();
+    placeWakeTick(+cut.input.value);
+  });
+  cut.input.addEventListener('change', () => save({ cutoff: +cut.input.value }, 'Cutoff saved.'));
+  p.append(row, cut.wrap, meterWrap, status, hint);
+  placeWakeTick(+cut.input.value, tick);
   sync();
   return p;
+}
+function cutoffField(value) {
+  const wrap = el('label', '', 'Cutoff');
+  const line = el('div', 'wake-cutoff');
+  const input = el('input');
+  input.type = 'range';
+  input.id = 'wake-cutoff';
+  input.min = '0.50';
+  input.max = '0.99';
+  input.step = '0.01';
+  const shown = el('output');
+  shown.setAttribute('aria-hidden', 'true');
+  line.append(input, shown);
+  const ends = el('div', 'wake-ends');
+  ends.append(el('small', '', 'Hears you from further away'), el('small', '', 'Fewer false wakes'));
+  wrap.append(line, ends);
+  const show = () => (shown.textContent = (+input.value).toFixed(2));
+  const set = (c) => {
+    input.value = (+c || 0.97).toFixed(2);
+    show();
+  };
+  set(value);
+  return { wrap, input, show, set };
+}
+// A line across the live meter at the cutoff, so a peak reads against it.
+function placeWakeTick(cutoff, tick = $('#wake-meter .wake-tick')) {
+  if (tick && cutoff) tick.style.left = Math.max(0, Math.min(1, cutoff)) * 100 + '%';
 }
 // While the meter is on screen, poll a little faster so it moves while you talk.
 setInterval(() => {

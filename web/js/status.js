@@ -136,6 +136,13 @@ function trackWake(w) {
   m.firstChild.style.width = pct + '%';
   m.setAttribute('aria-valuenow', String(pct));
   m.classList.toggle('idle', !w.armed);
+  // The slider leads while someone holds it; otherwise the board's cutoff (another browser may change it).
+  const cut = $('#wake-cutoff');
+  if (cut && cut !== document.activeElement && w.cutoff && +cut.value !== +w.cutoff) {
+    cut.value = (+w.cutoff).toFixed(2);
+    cut.dispatchEvent(new Event('input'));
+  }
+  placeWakeTick(cut && cut === document.activeElement ? +cut.value : +w.cutoff);
 }
 // The hands-free agent can change on the desk (the dial) or in another browser. Keep Settings › Voice › Devices in
 // step, but never under someone who is choosing there or whose own choice is still saving.

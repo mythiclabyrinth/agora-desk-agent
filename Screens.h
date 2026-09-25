@@ -20,7 +20,6 @@ struct DeskView {
   bool wakeEnabled = false;
   bool wakeArmed = false;
   const char *wakePhrase = "";
-  const char *sensitivity = "medium";
 
   DeskActivity activity = DeskActivity::None;
   const char *source = "";         // Recording: btn | wake | page
@@ -48,12 +47,6 @@ inline String glyphText(char glyph, const char *text) {
   return fitText(s, LCD_COLS);
 }
 
-inline const char *sensitivityShort(const char *level) {
-  if (!strcmp(level, "low")) return "low";
-  if (!strcmp(level, "high")) return "high";
-  return "med";
-}
-
 inline ScreenLines bootScreen() {
   return screenLines(fitText("Desk agent", LCD_COLS), fitText("starting...", LCD_COLS));
 }
@@ -75,7 +68,7 @@ inline ScreenLines restingScreen(const DeskView &v) {
   String bottom;
   if (!v.wifi || !v.wakeAvailable) bottom = fitText(v.address, LCD_COLS);
   else if (!v.wakeEnabled) bottom = fitText("Muted", LCD_COLS);
-  else bottom = alignEnds(v.wakePhrase, sensitivityShort(v.sensitivity), LCD_COLS);
+  else bottom = fitText(v.wakePhrase, LCD_COLS);
   return screenLines(alignEnds(v.agent, icons, LCD_COLS), bottom);
 }
 
@@ -128,6 +121,11 @@ inline ScreenLines wakeNotice(const char *phrase) {
 
 inline ScreenLines missedNotice() {
   return screenLines(glyphText(GLYPH_ALERT, "Didn't catch"), fitText("that - try again", LCD_COLS));
+}
+
+// The user dropped the recording on purpose, so no alert glyph.
+inline ScreenLines cancelledNotice() {
+  return screenLines(fitText("Cancelled", LCD_COLS), fitText("nothing sent", LCD_COLS));
 }
 
 // The reply itself is on the page and the speaker; 16 columns cannot carry it.

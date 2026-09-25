@@ -38,13 +38,20 @@ void AgentDial::update() {
 
   int8_t press = dial.pollPress();
   if (press > 0) {
-    _pressedAt = now ? now : 1;
-  } else if (press < 0 && _pressedAt) {
-    if (now - _pressedAt < DIAL_SHORT_PRESS_MS) {
+    _pressing = true;
+    _longFired = false;
+  } else if (press < 0 && _pressing) {
+    _pressing = false;
+    // Mid-recording a short press does nothing: the clip already has its agent.
+    if (!_longFired && voiceFlow.phase() != VoicePhase::Recording) {
       _cue = Cue::Position;
       _cueAt = now;
     }
-    _pressedAt = 0;
+  }
+  // Fires while still held, so the beep tells the user to let go.
+  if (_pressing && !_longFired && dial.heldMs() >= DIAL_LONG_PRESS_MS) {
+    _longFired = true;
+    voiceFlow.toggleMute();
   }
 
   // The open recording already has its agent; a beep would land in the clip

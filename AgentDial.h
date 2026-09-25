@@ -30,6 +30,7 @@ inline int dialPick(const bool ready[DIAL_AGENT_COUNT], int current, int steps) 
 // Turns dial clicks into the hands-free agent. The choice applies in RAM at
 // once; the "which agent" beeps wait until the knob rests, and the flash
 // write waits longer. Neither happens while a recording is open.
+// The knob's switch: a short press replays the cue, a long one toggles mute.
 class AgentDial {
  public:
   void begin();
@@ -49,7 +50,8 @@ class AgentDial {
   bool _spinChanged = false;  // this spin moved the selection (until its cue plays)
   bool _unsaved = false;
   unsigned long _saveAt = 0;
-  unsigned long _pressedAt = 0;
+  bool _pressing = false;   // a press seen since boot, not yet released
+  bool _longFired = false;  // this press already toggled mute
   uint32_t _cues = 0;
 };
 

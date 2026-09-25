@@ -4,20 +4,27 @@
 
 // ESP32-S3 header on this board, top to bottom beside the USB socket:
 // GND, 5V, 13, 12, 11, 10, 9, 46, 3, 8, 18, 17, 16, 15, 7, 6, 5, 4, RST, 3V3.
-// Every pin on it is in use; 8 and 7 carry the LCD's I2C bus. 3 and 46 are
-// strapping pins, so only parts that are safe at reset go there: 46 must not
-// be pulled high while GPIO 0 is low (the upload path), and 3 is ignored at
-// boot unless the JTAG-select eFuse is burned.
+//   13, 12, 11   INMP441 mic (SD, SCK, WS)
+//   10, 9, 3     KY-040 dial (DT, CLK, knob switch)
+//   8, 7         LCD I2C (SDA, SCL)
+//   18           blue listening LED
+//   17, 16, 15   MAX98357A amp (DIN, BCLK, LRC)
+//   6            talk button
+//   4            buzzer
+// Free: GPIO 5, GPIO 46.
+// 3 and 46 are strapping pins. 3 is ignored at boot unless the JTAG-select
+// eFuse is burned, which a stock S3 does not have. 46 must not be pulled high
+// while GPIO 0 is low (the upload path): a bare button to GND is safe there, a
+// part with a pull-up is not.
 // Off this header, 35-37 belong to the octal PSRAM, 26-32 to flash, 19/20 to USB.
-// Buttons (talk, mute, knob switch) go to GND and use the internal pull-up.
-constexpr uint8_t LED_PIN = 5;
+// Buttons (talk, knob switch) go to GND and use the internal pull-up.
 constexpr unsigned long BUTTON_DEBOUNCE_MS = 40;
 constexpr uint8_t BUZZER_PIN = 4;
 
 constexpr uint8_t TALK_BUTTON_PIN = 6;
-// Toggles mute: wake-word listening off (the talk button still works). A bare
-// button to GND can only pull 46 low, which is its safe level at reset.
-constexpr uint8_t MUTE_BUTTON_PIN = 46;
+// During a hands-free or page recording, one click sends it and two cancel
+// it; a click is single once this long passes without a second press.
+constexpr unsigned long TALK_DOUBLE_CLICK_MS = 350;
 // Blue LED, lit while the mic listens (wake word armed, or recording). It
 // drops ~3 V, so from a 3.3 V pin it needs 47-100 ohm, not 220-330.
 constexpr uint8_t LISTEN_LED_PIN = 18;
@@ -40,8 +47,9 @@ constexpr unsigned long DIAL_SAVE_REST_MS = 1500;
 // One beep per place (claude 1, cursor 2, codex 3); loop() blocks meanwhile.
 constexpr unsigned long DIAL_CUE_BEEP_MS = 60;
 constexpr unsigned long DIAL_CUE_GAP_MS = 140;
-// A shorter knob press replays the cue; longer holds are reserved.
-constexpr unsigned long DIAL_SHORT_PRESS_MS = 800;
+// Holding the knob this long toggles mute. The beep sounds while it is still
+// held, so the user knows to let go; a shorter press replays the cue.
+constexpr unsigned long DIAL_LONG_PRESS_MS = 800;
 
 // INMP441 microphone on I2S port 0. VDD 3V3, GND, L/R to GND (left slot).
 constexpr int8_t MIC_BCLK_PIN = 12;   // SCK
@@ -82,9 +90,9 @@ constexpr uint8_t MIC_TASK_CORE = 0;
 constexpr uint8_t MIC_TASK_PRIORITY = 5;
 constexpr uint32_t MIC_TASK_STACK = 8192;
 
-// Wake word. The model's own cutoff (WakeModel.h) is "medium"; low and high
-// move it by this much, clamped to the range below.
-constexpr float WAKE_CUTOFF_SHIFT = 0.04f;
+// Wake word. It fires when the mean of the model's last few probabilities
+// passes a cutoff: the model's own (WakeModel.h) until the page's slider
+// sets one, always within this range.
 constexpr float WAKE_CUTOFF_MIN = 0.50f;
 constexpr float WAKE_CUTOFF_MAX = 0.99f;
 // After a detection the detector ignores the phrase's own tail.
