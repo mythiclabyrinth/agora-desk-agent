@@ -45,13 +45,8 @@ const char *voiceSourceName(VoiceSource source) {
 
 void VoiceFlow::begin() {
   _talk.begin(TALK_BUTTON_PIN);
-  _muteButton.begin(MUTE_BUTTON_PIN);
   audio.begin();
   wakeWord.setSensitivity(configStore.wake().sensitivity.c_str());
-}
-
-bool VoiceFlow::holdingLed() const {
-  return _phase == VoicePhase::Recording || _phase == VoicePhase::Transcribing;
 }
 
 bool VoiceFlow::busy() const {
@@ -77,7 +72,6 @@ void VoiceFlow::readButtons() {
   int8_t talk = _talk.poll();
   if (talk > 0) onPress();
   else if (talk < 0) onRelease();
-  if (_muteButton.poll() > 0) onMuteButton();
 }
 
 void VoiceFlow::update() {
@@ -221,7 +215,7 @@ void VoiceFlow::setWakeSensitivity(const String &level) {
 
 // Mute means "stop listening now": it turns wake listening off and, if the
 // mic is open for any reason, drops that recording too. Otherwise it toggles.
-void VoiceFlow::onMuteButton() {
+void VoiceFlow::toggleMute() {
   String error;
   if (_phase == VoicePhase::Recording) {
     audio.discardRecording();
@@ -394,7 +388,6 @@ void VoiceFlow::finishRecording() {
 
 void VoiceFlow::sendRecording() {
   setPhase(VoicePhase::Transcribing);
-  feedback.follow(chatClient.phase(), true);
   Serial.print("Voice: transcribing ");
   Serial.print(audio.wavSize());
   Serial.println(" bytes");

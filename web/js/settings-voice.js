@@ -508,8 +508,8 @@ async function renderVoice() {
   root.append(stack);
   activate(panes[voiceTab] ? voiceTab : 'credentials');
 }
-// Wake word: one setting shared with the desk's mute button (wake_enabled == not muted). The blue LED shows when
-// the desk mic is listening. The meter reads the detector's smoothed score from /api/status, for tuning.
+// Wake word: one setting shared with the desk dial's long press (wake_enabled == not muted). The blue LED
+// shows when the desk mic is listening. The meter reads the detector's smoothed score from /api/status.
 function wakePanel(v) {
   const phrase = v.wake_phrase || 'the wake word';
   const p = panel(
@@ -546,9 +546,8 @@ function wakePanel(v) {
   const hint = el(
     'p',
     'note',
-    'The blue light on the desk is on while its microphone is listening. The mute button (GPIO ' +
-      (v.wake_button_pin ?? 46) +
-      ') switches the wake word off and on; the talk button works either way.',
+    'The blue light on the desk is on while its microphone is listening. Hold the dial’s knob to mute or ' +
+      'unmute; a short press says which agent is selected. The talk button works either way.',
   );
   let on = !!v.wake_enabled;
   const sync = () => {

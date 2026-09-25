@@ -36,8 +36,6 @@ class VoiceFlow {
   VoiceStatus status() const;
   // Cheap phase check for code that runs every loop pass (status() copies strings).
   VoicePhase phase() const { return _phase; }
-  // True while the mic is open or a clip is being sent; the LED stays lit.
-  bool holdingLed() const;
   bool busy() const;
   // Called on every phase change. Transcribing and Speaking block loop() as
   // soon as they begin, so polling alone would never see them.
@@ -53,16 +51,18 @@ class VoiceFlow {
   bool wakeListening() const;
   // The detector is armed right now (policy, not the brief deaf windows).
   bool wakeArmed() const { return _wakeArmed; }
-  // Unmute / mute wake listening and save it; the page and the mute button
-  // both come through here.
+  // Unmute / mute wake listening and save it; the page and toggleMute() both
+  // come through here.
   bool setWakeEnabled(bool on, String &error);
+  // The dial's long press: flips mute with a beep, or drops an open recording
+  // and mutes.
+  void toggleMute();
   void setWakeSensitivity(const String &level);
 
  private:
   void readButtons();
   void onPress();
   void onRelease();
-  void onMuteButton();
   void updateWake();
   void onWake(uint32_t samplePos);
   bool wakeReady();
@@ -91,7 +91,6 @@ class VoiceFlow {
   unsigned long _speakAt = 0;
 
   DebouncedButton _talk;
-  DebouncedButton _muteButton;
   bool _wakeArmed = false;
 
   // Wake recording endpointing: VAD counters from when judging began.

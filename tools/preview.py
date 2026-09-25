@@ -32,7 +32,7 @@ VOICE = dict(keys=dict(groq=False, openai=False), stt_provider='groq', tts_provi
              tts_voices=dict(groq='autumn', openai='alloy'), accent='american', agent='claude',
              stt_ready=False, tts_ready=False, mic=True, speaker=True, button_pin=6,
              wake_enabled=False, wake_sensitivity='medium', wake_available=True, wake_phrase='Hey Jarvis',
-             wake_button_pin=46, listen_led_pin=18)
+             listen_led_pin=18)
 # ?scenario=voice walks the button flow: recording -> transcribing -> waiting -> speaking -> done.
 # The chat mic button drives the same steps from /api/voice/talk.
 VOICE_STEPS = [(0, 'recording'), (3, 'transcribing'), (5, 'waiting'), (9, 'speaking'), (13, 'done')]
@@ -228,7 +228,7 @@ class Handler(BaseHTTPRequestHandler):
             voice_ready()
             self.reply({'ok':True,'stt_ready':VOICE['stt_ready'],'tts_ready':VOICE['tts_ready']})
         elif self.path == '/api/voice/wake':
-            # The page's wake toggle and sensitivity; the same setting as the desk's mute button.
+            # The page's wake toggle and sensitivity; the same setting as the desk dial's long press.
             if 'sensitivity' in data:
                 if data['sensitivity'] not in ('low', 'medium', 'high'):
                     return self.reply({'error':'Sensitivity must be low, medium, or high.'},400)
