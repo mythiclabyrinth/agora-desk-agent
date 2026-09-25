@@ -9,6 +9,7 @@
 #include "Audio.h"
 #include "Speech.h"
 #include "VoiceFlow.h"
+#include "Wake.h"
 
 #include <esp_heap_caps.h>
 
@@ -95,6 +96,7 @@ void WebUi::begin() {
   _server.on("/api/voice/keys", HTTP_POST, [this]() { handleVoiceKeys(); });
   _server.on("/api/voice/test", HTTP_POST, [this]() { handleVoiceTest(); });
   _server.on("/api/voice/talk", HTTP_POST, [this]() { handleVoiceTalk(); });
+  _server.on("/api/voice/wake", HTTP_POST, [this]() { handleVoiceWake(); });
   _server.on("/api/voice/transcribe", HTTP_POST, [this]() { handleTranscribe(); },
              [this]() { handleTranscribeUpload(); });
   _server.on("/api/voice/say", HTTP_POST, [this]() { handleSay(); });
@@ -187,6 +189,8 @@ void WebUi::handleStatus() {
   body += audio.micReady() ? "true" : "false";
   body += ",\"speaker\":";
   body += audio.ampReady() ? "true" : "false";
+  body += ",\"wake\":";
+  body += wakeJson();
   if (voice.heard.length()) {
     body += ",\"heard\":\"";
     body += jsonEscape(voice.heard);
@@ -422,8 +426,68 @@ void WebUi::handleVoiceGet() {
   body += audio.ampReady() ? "true" : "false";
   body += ",\"button_pin\":";
   body += String(TALK_BUTTON_PIN);
+  const WakeSettings &wake = configStore.wake();
+  body += ",\"wake_enabled\":";
+  body += wake.enabled ? "true" : "false";
+  body += ",\"wake_sensitivity\":\"";
+  body += jsonEscape(wake.sensitivity);
+  body += "\",\"wake_available\":";
+  body += wakeWord.available() ? "true" : "false";
+  body += ",\"wake_phrase\":\"";
+  body += jsonEscape(wakeWord.phrase());
+  body += "\",\"wake_button_pin\":";
+  body += String(MUTE_BUTTON_PIN);
+  body += ",\"listen_led_pin\":";
+  body += String(LISTEN_LED_PIN);
   body += '}';
   sendJson(200, body);
+}
+
+// {enabled, available, armed, muted, phrase, score}: what the page needs to
+// draw the wake-word section and the tuning meter.
+String WebUi::wakeJson() {
+  bool enabled = configStore.wake().enabled;
+  String body = "{\"enabled\":";
+  body += enabled ? "true" : "false";
+  body += ",\"muted\":";
+  body += enabled ? "false" : "true";
+  body += ",\"available\":";
+  body += wakeWord.available() ? "true" : "false";
+  body += ",\"armed\":";
+  body += voiceFlow.wakeArmed() ? "true" : "false";
+  body += ",\"sensitivity\":\"";
+  body += jsonEscape(configStore.wake().sensitivity);
+  body += "\",\"phrase\":\"";
+  body += jsonEscape(wakeWord.phrase());
+  body += "\",\"score\":";
+  body += String(wakeWord.score(), 2);
+  body += '}';
+  return body;
+}
+
+// {enabled?, sensitivity?}: the page's wake toggle (the same setting as the
+// mute button) and sensitivity. Allowed mid-exchange, unlike /api/voice.
+void WebUi::handleVoiceWake() {
+  String body = _server.arg("plain");
+  bool enabled = false;
+  String level;
+  bool sentEnabled = jsonTopBool(body, "enabled", enabled);
+  bool sentLevel = jsonTopString(body, "sensitivity", level);
+  level.trim();
+  if (sentLevel && !wakeSensitivityKnown(level)) {
+    sendError(400, "Sensitivity must be low, medium, or high.");
+    return;
+  }
+  if (sentLevel) voiceFlow.setWakeSensitivity(level);
+  String error;
+  if (sentEnabled && !voiceFlow.setWakeEnabled(enabled, error)) {
+    sendError(409, error.c_str());
+    return;
+  }
+  String response = "{\"ok\":true,\"wake\":";
+  response += wakeJson();
+  response += '}';
+  sendJson(200, response);
 }
 
 // Features: providers, models, voices, accent, and the button's agent. Keys
@@ -473,6 +537,22 @@ void WebUi::handleVoicePost() {
     sendError(400, "Choose which agent the talk button should reach.");
     return;
   }
+  String wakeLevel;
+  bool sentWakeLevel = jsonTopString(body, "wake_sensitivity", wakeLevel);
+  wakeLevel.trim();
+  if (sentWakeLevel && !wakeSensitivityKnown(wakeLevel)) {
+    sendError(400, "Wake sensitivity must be low, medium, or high.");
+    return;
+  }
+  bool wakeOn = false;
+  if (jsonTopBool(body, "wake_enabled", wakeOn)) {
+    String error;
+    if (!voiceFlow.setWakeEnabled(wakeOn, error)) {
+      sendError(409, error.c_str());
+      return;
+    }
+  }
+  if (sentWakeLevel) voiceFlow.setWakeSensitivity(wakeLevel);
   configStore.saveVoiceFeatures(in);
   VoiceSettings saved = configStore.voice();
   String response = "{\"ok\":true,\"stt_ready\":";

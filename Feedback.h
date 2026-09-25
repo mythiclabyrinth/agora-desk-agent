@@ -1,5 +1,7 @@
 #pragma once
 
+#include <stdint.h>
+
 enum class Phase { Idle, Listening, Done, Failed };
 
 class Feedback {
@@ -11,6 +13,15 @@ class Feedback {
   // A quick tick for the button: mic opened / mic closed.
   void tick();
   void error();
+  // Wake word heard, mic open: two short beeps, unlike the button's tick.
+  void wakeChime();
+  // A hands-free recording gave up (nobody spoke): one long, low-key beep.
+  void cancel();
+  // Mute button: one short beep when muting (or dropping a recording), two
+  // when unmuting.
+  void muteToggled(bool muted);
+  // The blue LED: lit whenever the board's mic is listening.
+  void listenLed(bool on);
 
  private:
   void allOff();
@@ -23,6 +34,7 @@ class Feedback {
   unsigned long _lastBlinkAt = 0;
   bool _blinkOn = false;
   bool _held = false;
+  int8_t _listenLed = -1;  // unknown until the first listenLed() call
 };
 
 extern Feedback feedback;

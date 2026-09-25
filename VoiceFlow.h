@@ -3,15 +3,17 @@
 #include <Arduino.h>
 
 #include "Config.h"
+#include "Mic.h"
 
-// Hold the button and talk; let go to send. The clip goes to Groq for text,
-// the text goes through the same ChatClient the web page uses, and the reply
-// is read out by Groq through the speaker.
+// Hold the button and talk; let go to send. Or say the wake phrase, talk,
+// and pause. The clip goes to Groq for text, the text goes through the same
+// ChatClient the web page uses, and the reply is read out by Groq through
+// the speaker.
 enum class VoicePhase { Idle, Recording, Transcribing, Waiting, Speaking, Done, Failed };
 
-// Who started this exchange: the physical button, the page's mic button, or
-// a typed message whose reply should be read aloud.
-enum class VoiceSource { Button, Page, Typed };
+// Who started this exchange: the physical button, the page's mic button, a
+// typed message whose reply should be read aloud, or the wake word.
+enum class VoiceSource { Button, Page, Typed, Wake };
 
 struct VoiceStatus {
   VoicePhase phase = VoicePhase::Idle;
@@ -22,6 +24,20 @@ struct VoiceStatus {
   String reply;
   String error;
   unsigned long recordedMs = 0;
+};
+
+// A push button to GND with the internal pull-up, debounced by time.
+class DebouncedButton {
+ public:
+  void begin(uint8_t pin);
+  // +1 on a settled press, -1 on a settled release, 0 otherwise.
+  int8_t poll();
+
+ private:
+  uint8_t _pin = 0;
+  bool _pressed = false;
+  bool _raw = false;
+  unsigned long _changedAt = 0;
 };
 
 class VoiceFlow {
@@ -39,11 +55,27 @@ class VoiceFlow {
   // A typed message is in flight on the ChatClient; read its reply aloud.
   bool speakWhenDone(uint32_t chatJob, const String &agentKey, String &error);
 
+  // Wake-word listening is switched on (not muted) and the engine loaded.
+  bool wakeListening() const;
+  // The detector is armed right now (policy, not the brief deaf windows).
+  bool wakeArmed() const { return _wakeArmed; }
+  // Switch wake listening on or off (unmute / mute) and save it; the page
+  // and the GPIO 7 mute button both come through here.
+  bool setWakeEnabled(bool on, String &error);
+  void setWakeSensitivity(const String &level);
+
  private:
-  void readButton();
+  void readButtons();
   void onPress();
   void onRelease();
-  bool beginRecording(const String &agentKey, VoiceSource source, String &error);
+  void onMuteButton();
+  void updateWake();
+  void onWake(uint32_t samplePos);
+  bool wakeReady();
+  bool wakeHeardSpeech(const VadStats &now) const;
+  void checkWakeEnd();
+  void cancelWake(const char *why);
+  bool beginRecording(const String &agentKey, VoiceSource source, String &error, unsigned long preRollMs);
   void finishRecording();
   void sendRecording();
   void speakReply();
@@ -61,9 +93,17 @@ class VoiceFlow {
   unsigned long _recordedMs = 0;
   unsigned long _speakAt = 0;
 
-  bool _pressed = false;
-  bool _rawPressed = false;
-  unsigned long _rawChangedAt = 0;
+  DebouncedButton _talk;
+  DebouncedButton _muteButton;
+  bool _wakeArmed = false;
+
+  // Wake recording endpointing: VAD counters from when judging began.
+  uint32_t _vadFromFrame = 0;  // judge frames from here (after the chime)
+  bool _vadStarted = false;
+  VadStats _vadFrom;
+  // The slower readiness checks (keys, agent, Wi-Fi), refreshed once a second.
+  bool _wakeReady = false;
+  unsigned long _wakeCheckedAt = 0;
 };
 
 const char *voicePhaseName(VoicePhase phase);

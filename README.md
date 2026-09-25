@@ -28,6 +28,15 @@ use voice, a Groq and/or OpenAI key for speech.
   the reply is read aloud through a MAX98357A speaker (Groq Orpheus or OpenAI
   TTS). Provider, model, voice and accent are picked per direction under
   Settings › Voice.
+- **Wake word (hands-free)** — say "Hey Jarvis" (a "Hey Agora" model can be
+  trained and dropped in; see [tools/wake/README.md](tools/wake/README.md)), wait
+  for two beeps, speak, and pause. The model runs on the board (microWakeWord on
+  TensorFlow Lite Micro); an energy VAD ends the recording when you stop talking
+  and drops it if you said nothing. A **mute button** switches the wake word off
+  and on (so does Settings › Voice), and a **blue LED** is lit whenever the
+  board's mic is listening: wake word armed, or any recording in progress. The
+  wake word is deaf while the board beeps or speaks, so a reply that says the
+  phrase cannot wake it.
 - **Voice from the browser (no extra hardware)** — the chat's mic button records
   with the browser's microphone and the speaker toggle plays replies through the
   browser. The board proxies both to the speech APIs so the keys never leave it.
@@ -41,11 +50,16 @@ ESP32-S3 dev module with 8 MB PSRAM and 16 MB flash. Pins are in `Board.h`.
 | LED (with resistor) | GPIO 5 → LED → GND |
 | Active buzzer | GPIO 4 → buzzer → GND |
 | Talk button | GPIO 6 → button → GND (internal pull-up) |
+| Mute button | GPIO 7 → button → GND (internal pull-up) |
+| Blue listening LED | GPIO 8 → 47–100 Ω → LED → GND |
 | INMP441 microphone | SCK 12, WS 11, SD 13, L/R → GND, VDD 3V3 |
 | MAX98357A amplifier | BCLK 16, LRC 15, DIN 17, VIN 5V, 4 Ω speaker on +/− |
 
-GPIO 3 and 46 are strapping pins and stay unused. The LED, buzzer, button, mic
-and amp are all optional; the page works without any of them.
+GPIO 3 and 46 are strapping pins and stay unused; on the usable header
+(GND, 5V, 13, 12, 11, 10, 9, 46, 3, 8, 18, 17, 16, 15, 7, 6, 5, 4, RST, 3V3)
+GPIO 9, 10 and 18 are still free. A blue LED drops about 3 V, so from a 3.3 V
+pin it needs a small resistor (47–100 Ω) or it barely glows. The LEDs, buzzer,
+buttons, mic and amp are all optional; the page works without any of them.
 
 ## Build and flash
 
@@ -120,11 +134,18 @@ Portal.*         soft-AP, captive DNS, Wi-Fi join/scan, mDNS
 WebUi.*          HTTP routes and JSON API
 ChatClient.*     post to Agora, poll for the agent's reply
 Feedback.*       LED and buzzer patterns
-Audio.*          I2S mic capture and speaker playback
+Mic.*            I2S mic task (core 0): gain, PSRAM ring, feeds VAD + wake word
+Wake.*           wake word engine (TFLite Micro + audio frontend)
+WakeModel.h      GENERATED model bytes + manifest (tools/wake/make_model_header.py)
+Vad.*            energy voice-activity detector and hands-free endpointing
+WakeText.h       strips "hey jarvis"/"hey agora" from transcripts
+Audio.*          recordings (from the mic ring) and speaker playback
 Speech.*         Groq / OpenAI transcription and text-to-speech
-VoiceFlow.*      push-to-talk state machine
+VoiceFlow.*      push-to-talk / wake-word state machine, mute button, listening LED
 Json.h, Wav.h    tiny parsers/writers
 Page.h           GENERATED gzipped web page
 web/             page source + build.py
+src/microfrontend vendored TFLM audio microfrontend (Apache-2.0)
 tools/preview.py local mock server for the page
+tools/wake/      wake model sources, header generator, training notes
 ```

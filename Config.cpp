@@ -47,6 +47,9 @@ ConfigStore configStore;
 
 void ConfigStore::begin() {
   _prefs.begin("esp32agent", false);
+  _wake.enabled = _prefs.getBool("wake_on", false);
+  _wake.sensitivity = _prefs.getString("wake_sens", "medium");
+  if (!wakeSensitivityKnown(_wake.sensitivity)) _wake.sensitivity = "medium";
 }
 
 String ConfigStore::wifiSsid() {
@@ -210,4 +213,16 @@ bool ConfigStore::saveVoiceKey(const String &provider, const String &key) {
   }
   _prefs.putString(slot, key.c_str());
   return true;
+}
+
+bool wakeSensitivityKnown(const String &level) {
+  return level == "low" || level == "medium" || level == "high";
+}
+
+void ConfigStore::saveWake(const WakeSettings &in) {
+  String level = wakeSensitivityKnown(in.sensitivity) ? in.sensitivity : String("medium");
+  if (in.enabled != _wake.enabled) _prefs.putBool("wake_on", in.enabled);
+  if (level != _wake.sensitivity) _prefs.putString("wake_sens", level.c_str());
+  _wake.enabled = in.enabled;
+  _wake.sensitivity = level;
 }

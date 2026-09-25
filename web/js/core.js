@@ -40,7 +40,8 @@ let waitingJob = 0,
   draftAgent = current;
 let voiceTab = 'credentials';
 let voiceBusy = false,
-  voiceSeen = storage.get('localStorage', 'desk-voice-seen') || '';
+  voiceSeen = storage.get('localStorage', 'desk-voice-seen') || '',
+  wakeState = {};
 const drafts = {};
 let statusAgents = [];
 function el(tag, className, text) {

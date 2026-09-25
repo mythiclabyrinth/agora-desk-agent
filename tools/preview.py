@@ -2,7 +2,8 @@
 """Preview the embedded page with isolated demo APIs; never contacts the ESP32.
 Run: python3 tools/preview.py, then open http://127.0.0.1:8765.
 Add ?scenario=offline or ?scenario=empty to exercise connection/setup states,
-or ?scenario=voice to watch a button conversation land in the chat.
+?scenario=voice to watch a button conversation land in the chat, or
+?scenario=wake to watch a hands-free (wake word) exchange.
 """
 import gzip
 import json
@@ -27,11 +28,23 @@ VOICE = dict(keys=dict(groq=False, openai=False), stt_provider='groq', tts_provi
              stt_models=dict(groq='whisper-large-v3-turbo', openai='gpt-4o-mini-transcribe'),
              tts_models=dict(groq='canopylabs/orpheus-v1-english', openai='gpt-4o-mini-tts'),
              tts_voices=dict(groq='autumn', openai='alloy'), accent='american', agent='claude',
-             stt_ready=False, tts_ready=False, mic=True, speaker=True, button_pin=6)
+             stt_ready=False, tts_ready=False, mic=True, speaker=True, button_pin=6,
+             wake_enabled=False, wake_sensitivity='medium', wake_available=True, wake_phrase='Hey Jarvis',
+             wake_button_pin=7, listen_led_pin=8)
 # ?scenario=voice walks the button flow: recording -> transcribing -> waiting -> speaking -> done.
 # The chat mic button drives the same steps from /api/voice/talk.
 VOICE_STEPS = [(0, 'recording'), (3, 'transcribing'), (5, 'waiting'), (9, 'speaking'), (13, 'done')]
 VOICE_RUN = {'started': 0, 'source': 'button', 'agent': 'claude', 'stopped': 0}
+# ?scenario=wake: the detector's score climbs, the phrase is heard, the VAD ends the clip, and the reply lands.
+WAKE_STEPS = [(0, 'idle'), (3, 'recording'), (6, 'transcribing'), (8, 'waiting'), (12, 'speaking'), (16, 'done')]
+WAKE_RUN = {'started': 0}
+
+
+def wake_status(armed=True, score=0.0):
+    on = VOICE['wake_enabled'] and VOICE['wake_available']
+    return dict(enabled=VOICE['wake_enabled'], muted=not VOICE['wake_enabled'], available=VOICE['wake_available'],
+                armed=on and armed, sensitivity=VOICE['wake_sensitivity'], phrase=VOICE['wake_phrase'],
+                score=round(score if on and armed else 0.0, 2))
 
 
 def voice_ready():
@@ -79,6 +92,23 @@ class Handler(BaseHTTPRequestHandler):
         elif path == '/api/status':
             voice = dict(state='idle', source='button', job=0, agent='claude', recorded_ms=0,
                          stt_ready=VOICE['stt_ready'], tts_ready=VOICE['tts_ready'], mic=True, speaker=True)
+            voice['wake'] = wake_status(score=0.02 + 0.03 * abs(math.sin(time.time())))
+            if 'scenario=wake' in scenario:
+                if not WAKE_RUN['started']:
+                    WAKE_RUN['started'] = time.time()
+                    VOICE['wake_enabled'] = True
+                elapsed = time.time() - WAKE_RUN['started']
+                state = [s for at, s in WAKE_STEPS if elapsed >= at][-1]
+                # The score rises as the phrase is spoken, then the detector is disarmed until the exchange ends.
+                score = min(0.99, 0.1 + 0.3 * elapsed) if state == 'idle' else 0.0
+                voice['wake'] = wake_status(armed=state in ('idle', 'done'), score=score)
+                if state != 'idle':
+                    voice.update(state=state, source='wake', agent='claude', job=int(WAKE_RUN['started']),
+                                 recorded_ms=min(int((elapsed - 3) * 1000), 2400))
+                if elapsed >= 8:
+                    voice['heard'] = 'What is left on the wake word branch?'
+                if state == 'done':
+                    voice['reply'] = 'Train the Hey Agora model, then tune the VAD thresholds on the real board.'
             if 'scenario=voice' in scenario and not VOICE_RUN['started']:
                 VOICE_RUN.update(started=time.time(), source='button', agent='claude', stopped=0)
             if VOICE_RUN['started']:
@@ -93,6 +123,8 @@ class Handler(BaseHTTPRequestHandler):
                     voice['heard'] = 'What should I work on this afternoon?'
                 if state == 'done':
                     voice['reply'] = 'Finish the voice branch, then take the board for a walk around the room and see how far the mic reaches.'
+            if voice['state'] == 'recording':
+                voice['wake']['armed'] = False
             self.reply(dict(wifi=not offline, ssid='Studio Wi-Fi', ip='192.168.0.113', ap_ip='192.168.4.1',
                             host='esp32-agent.local', listening=bool(JOB['number'] and time.time()-JOB['started'] < 4),
                             voice=voice,
@@ -154,8 +186,23 @@ class Handler(BaseHTTPRequestHandler):
                          stt_models=dict(groq=data['stt_model_groq'], openai=data['stt_model_openai']),
                          tts_models=dict(groq=data['tts_model_groq'], openai=data['tts_model_openai']),
                          tts_voices=dict(groq=data['voice_groq'], openai=data['voice_openai']))
+            if 'wake_enabled' in data:
+                VOICE['wake_enabled'] = bool(data['wake_enabled'])
+            if data.get('wake_sensitivity') in ('low', 'medium', 'high'):
+                VOICE['wake_sensitivity'] = data['wake_sensitivity']
             voice_ready()
             self.reply({'ok':True,'stt_ready':VOICE['stt_ready'],'tts_ready':VOICE['tts_ready']})
+        elif self.path == '/api/voice/wake':
+            # The page's wake toggle and sensitivity; the same setting as the desk's mute button.
+            if 'sensitivity' in data:
+                if data['sensitivity'] not in ('low', 'medium', 'high'):
+                    return self.reply({'error':'Sensitivity must be low, medium, or high.'},400)
+                VOICE['wake_sensitivity'] = data['sensitivity']
+            if 'enabled' in data:
+                if data['enabled'] and not VOICE['wake_available']:
+                    return self.reply({'error':'The wake word could not start on this board (see the serial log). The talk button still works.'},409)
+                VOICE['wake_enabled'] = bool(data['enabled'])
+            self.reply({'ok':True,'wake':wake_status()})
         elif self.path == '/api/voice/keys':
             if not data.get('clear') and not data.get('api_key','').startswith(('gsk_','sk-')):
                 return self.reply({'error':'That does not look like an API key.'},400)

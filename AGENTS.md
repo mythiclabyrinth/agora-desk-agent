@@ -9,9 +9,9 @@ An Arduino sketch for an ESP32-S3 (N16R8) that acts as a thin desk client for
 the Agora CLI bridges (Claude, Cursor, Codex). It hosts a web page, posts
 `@mention` messages into an Agora channel over its REST API, polls for the
 agent's reply, and gives LED/buzzer feedback. Optional voice: a push-to-talk
-button with an INMP441 mic and MAX98357A speaker, transcribed and spoken via
-Groq or OpenAI; the browser can also use its own mic/speaker with the board
-proxying the speech APIs.
+button (or an on-device wake word) with an INMP441 mic and MAX98357A speaker,
+transcribed and spoken via Groq or OpenAI; the browser can also use its own
+mic/speaker with the board proxying the speech APIs.
 
 Two languages, one build:
 
@@ -31,6 +31,10 @@ arduino-cli compile --fqbn esp32:esp32:esp32s3:PSRAM=opi,FlashSize=16M,Partition
 python3 tools/preview.py      # live preview + mock APIs on http://127.0.0.1:8765
 python3 web/build.py          # regenerate Page.h  (REQUIRED after editing web/)
 python3 web/build.py --check  # CI-style staleness check
+
+# wake word model (WakeModel.h is generated too)
+python3 tools/wake/make_model_header.py [model.tflite]
+python3 tools/wake/make_model_header.py --check
 ```
 
 There is no board-side test harness. Verify firmware changes by compiling and,
@@ -57,6 +61,7 @@ The page talks to the firmware only through the JSON API in `WebUi.cpp`:
 | `POST /api/wifi`, `GET /api/wifi/scan` | join / scan |
 | `GET/POST /api/voice`, `POST /api/voice/keys`, `POST /api/voice/test` | voice settings; keys write-only |
 | `POST /api/voice/talk` | `{action: start\|stop, agent}` drives the board mic from the page |
+| `POST /api/voice/wake` | `{enabled?, sensitivity?}` wake word on/off (= the mute button) and low\|medium\|high; allowed mid-exchange → `{wake}` |
 | `POST /api/voice/transcribe` | multipart clip from the browser mic → `{text}` |
 | `POST /api/voice/say` | `{text}` → finite WAV for the browser to play |
 
@@ -67,7 +72,7 @@ Adding a field: add it to the firmware handler, the page, **and**
 
 - **C++**: one class per concern, a global singleton per module
   (`configStore`, `portal`, `chatClient`, `webUi`, `voiceFlow`, `audio`,
-  `speech`, `feedback`), `begin()` in `setup()`, `update()`/`handle()` in
+  `speech`, `feedback`, `mic`, `wakeWord`), `begin()` in `setup()`, `update()`/`handle()` in
   `loop()`. Comments explain *why*, not what. Pins and limits live in
   `Board.h`; never hardcode a GPIO elsewhere.
 - **Errors degrade to text.** Handlers return `sendError(code, message)` with a
@@ -114,14 +119,33 @@ Adding a field: add it to the firmware handler, the page, **and**
   browser rule. HTTPS on the board would mean replacing `WebServer` with
   `esp_https_server`.
 - **Strapping pins** GPIO 3 and 46 stay unused. I2S port 0 is the mic, port 1
-  the amp.
+  the amp. Pins: LED 5, buzzer 4, talk button 6, mute button 7, blue listening
+  LED 8; free on the usable header: 9, 10, 18.
+- **The mic has one reader.** `Mic` runs a FreeRTOS task on core 0 that owns
+  I2S0; it feeds `wakeWord`, the VAD and a PSRAM ring. `Audio` recordings copy
+  from the ring in `loop()` (with a 300 ms pre-roll). Never call `readBytes` on
+  the mic elsewhere, and never call VoiceFlow/network code from the task — the
+  task only sets atomics that `loop()` consumes (`wakeWord.takeDetection`).
+- **No echo cancellation.** Anything that makes sound must deafen the wake word:
+  `Feedback::beep` and `Audio::play` call `wakeWord.holdOff()`. New sound paths
+  must do the same, or replies containing the phrase will wake the board.
+- **Wake settings are cached** in `ConfigStore` (`wake()`), because `loop()`
+  reads them every pass; `wake_enabled` is the single source of truth for the
+  mute button, the page toggle and the blue LED (LED = armed or recording).
+- **Hands-free clips without speech are never sent** (Whisper turns silence
+  into "Thank you."). VAD and wake thresholds live in `Board.h`; they are
+  untuned on real hardware.
+- **Vendored code**: `src/microfrontend` (TFLM, see its README) links against
+  the core's prebuilt `kiss_fft_fixed16`; `WakeModel.h` is generated — edit the
+  model, not the header.
 - **Flash budget**: the default 1.3 MB app partition is too small; the sketch
   needs the 3 MB scheme. Check the "Sketch uses" line after adding code.
 
 ## Testing
 
 - Firmware: compile with the exact FQBN above. For pure logic (`Json.h`,
-  `Speech::BodyReader`, `Wav.h`, `slugify`, `speechChunks`), a throwaway host
+  `Speech::BodyReader`, `Wav.h`, `slugify`, `speechChunks`, `Vad`,
+  `wakePhraseEnd`), a throwaway host
   test with a tiny `String`/`millis` shim compiles under clang in seconds; keep
   such files out of the repo or under a `tests/` folder if they become permanent.
 - Page: `python3 tools/preview.py`, then exercise the scenarios listed in

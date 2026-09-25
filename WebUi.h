@@ -21,6 +21,8 @@ private:
   void handleVoiceKeys();
   void handleVoiceTest();
   void handleVoiceTalk();
+  void handleVoiceWake();
+  String wakeJson();
   void handleTranscribeUpload();
   void handleTranscribe();
   void handleSay();

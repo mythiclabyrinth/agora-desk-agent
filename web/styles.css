@@ -2089,3 +2089,25 @@ select:focus-visible {
     transition: none !important;
   }
 }
+.wake-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.wake-meter {
+  height: 8px;
+  border-radius: 99px;
+  background: var(--soft);
+  overflow: hidden;
+}
+.wake-meter span {
+  display: block;
+  height: 100%;
+  width: 0;
+  background: var(--green);
+  transition: width 0.3s;
+}
+.wake-meter.idle span {
+  background: var(--muted);
+}

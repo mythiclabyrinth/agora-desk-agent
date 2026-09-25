@@ -10,6 +10,12 @@
 // back through the same provider's speech and the MAX98357A speaker. Add the
 // key under Settings › Voice.
 //
+// Hands-free: unless muted (the GPIO 7 mute button or Settings › Voice), say
+// the phrase, wait for two beeps, speak,
+// and pause. A microWakeWord model runs on the board (WakeModel.h, currently
+// "Hey Jarvis"; tools/wake/README.md explains training "Hey Agora"), and an
+// energy VAD ends the recording when you stop talking.
+//
 // The chat page can do the same without the desk hardware: the browser
 // records with its own microphone, the board forwards the clip for
 // transcription and fetches the spoken reply as a WAV for the page to play
@@ -21,9 +27,14 @@
 //   LED (with resistor)  GPIO 5 -> LED -> GND
 //   Active buzzer        GPIO 4 -> buzzer -> GND
 //   Talk button          GPIO 6 -> button -> GND (internal pull-up)
+//   Mute button          GPIO 7 -> button -> GND (internal pull-up)
+//   Blue listening LED   GPIO 8 -> 47-100 ohm -> LED -> GND (blue drops ~3 V, so
+//                        a bigger resistor leaves it very dim at 3.3 V). Lit
+//                        while the mic listens: wake word armed, or recording.
+// Still free on the usable header: GPIO 9, 10, 18.
 //   INMP441 mic          SCK GPIO 12, WS GPIO 11, SD GPIO 13, L/R -> GND, VDD 3V3
 //   MAX98357A amp        BCLK GPIO 16, LRC GPIO 15, DIN GPIO 17, VIN 5V, speaker on +/-
-// Leave GPIO 3 and GPIO 46 alone; they are strapping pins.
+// Leave GPIO 0, 3, 45 and 46 alone (strapping pins), and 35-37 (octal PSRAM).
 //
 // Board settings: ESP32S3 Dev Module, PSRAM "OPI PSRAM" (the N16R8 has
 // 8 MB; recordings live there), Flash Size 16MB, Partition Scheme
@@ -39,8 +50,10 @@
 #include "ChatClient.h"
 #include "Config.h"
 #include "Feedback.h"
+#include "Mic.h"
 #include "Portal.h"
 #include "VoiceFlow.h"
+#include "Wake.h"
 #include "WebUi.h"
 
 void setup() {
@@ -55,6 +68,9 @@ void setup() {
   feedback.begin();
   configStore.begin();
   portal.begin();
+  // The wake engine first: the mic task starts feeding it the moment it runs.
+  wakeWord.begin();
+  mic.begin();
   voiceFlow.begin();
   webUi.begin();
 
