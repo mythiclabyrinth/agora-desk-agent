@@ -15,6 +15,7 @@ private:
   void handleWifiScan();
   void handleAgentsGet();
   void handleAgentsPost();
+  void handleAgentChannels();
   void handleChat();
   void handleVoiceGet();
   void handleVoicePost();

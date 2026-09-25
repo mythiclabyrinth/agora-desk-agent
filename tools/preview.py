@@ -3,8 +3,9 @@
 Run: python3 tools/preview.py, then open http://127.0.0.1:8765.
 Add ?scenario=offline or ?scenario=empty to exercise connection/setup states,
 ?scenario=voice to watch a button conversation land in the chat,
-?scenario=wake to watch a hands-free (wake word) exchange, or ?scenario=dial to
-watch the desk dial cycle the hands-free agent.
+?scenario=wake to watch a hands-free (wake word) exchange, ?scenario=dial to
+watch the desk dial cycle the hands-free agent, or ?scenario=channels-error /
+?scenario=channels-old to see Settings › Agents › Load channels fail.
 """
 import gzip
 import json
@@ -43,6 +44,14 @@ WAKE_RUN = {'started': 0}
 # /api/status voice.target_agent) between the configured agents every few seconds.
 DIAL_CYCLE = ('claude', 'cursor')
 DIAL_EVERY_S = 3
+# POST /api/agents/{key}/channels: Agora's channel list, as the board relays it. Claude is in two channels,
+# Cursor in one, Codex in none.
+CHANNELS = [dict(id='general-dae8', name='general', group='Engineering', kind='channel'),
+            dict(id='random-e3a4', name='random', group='Engineering', kind='channel'),
+            dict(id='desk-general', name='desk', group='Engineering', kind='channel'),
+            dict(id='launch-7c21', name='launch', group='Product', kind='channel'),
+            dict(id='claude-1557', name='Claude', group='Direct messages', kind='agent_dm')]
+CHANNEL_MEMBERS = dict(claude={'desk-general', 'claude-1557'}, cursor={'general-dae8'}, codex=set())
 
 
 def agent_ready(a, scenario):
@@ -176,6 +185,10 @@ class Handler(BaseHTTPRequestHandler):
                 return self.reply({'error':'No audio arrived. Try recording again.'},400)
             return self.reply({'ok':True,'text':'What should I work on this afternoon?','bytes':len(raw)})
         data = json.loads(raw or b'{}')
+        scenario = self.headers.get('Referer', '')
+        parts = self.path.split('/')
+        if len(parts) == 5 and self.path.startswith('/api/agents/') and parts[4] == 'channels':
+            return self.channels(parts[3], data, scenario)
         if self.path == '/api/voice/say':
             # Browser-mode speaker: a finite WAV the page plays itself. A soft two-tone stands in for speech.
             time.sleep(1.0)
@@ -247,6 +260,25 @@ class Handler(BaseHTTPRequestHandler):
             self.reply({'ok':True,'job':int(VOICE_RUN['started']),'state':'recording'})
         else:
             self.reply({'error':'Not found'},404)
+
+    def channels(self, key, data, scenario):
+        a = next((a for a in AGENTS if a['id'] == key), None)
+        if not a:
+            return self.reply({'error':'Unknown agent.'},400)
+        url = data.get('url') or a['url']
+        if not url.startswith(('http://', 'https://')):
+            return self.reply({'error':'Agora URL must look like http://192.168.1.20:4470, with no /api path.'},400)
+        if not data.get('token') and not a['token_set']:
+            return self.reply({'error':'Add the access token first.'},400)
+        time.sleep(1.5)  # TLS and a round trip on the board
+        if 'scenario=channels-error' in scenario:
+            return self.reply({'error':f'Could not reach Agora at {url}.'},502)
+        if 'scenario=channels-old' in scenario:
+            return self.reply({'error':'This Agora server cannot list channels yet. Type the channel ID instead.'},502)
+        members = CHANNEL_MEMBERS[key]
+        name = data.get('name') or a['name']
+        self.reply({'ok':True, 'agent':dict(id=data.get('agent_id') or a['agent_id'], name=name, live=key == 'claude'),
+                    'channels':[dict(c, member=c['id'] in members) for c in CHANNELS]})
 
 if __name__ == '__main__':
     print('Isolated Desk agent preview: http://127.0.0.1:8765', flush=True)

@@ -13,12 +13,15 @@
 #include "Wake.h"
 
 #include <esp_heap_caps.h>
+#include <uri/UriBraces.h>
 
 namespace {
 
 // A browser clip is opus/aac, so a minute is well under this.
 constexpr size_t CLIP_MAX_BYTES = 3u * 1024 * 1024;
 constexpr size_t CLIP_FIRST_ALLOC = 256u * 1024;
+// Hundreds of channels; past this the page falls back to typing the id.
+constexpr size_t CHANNELS_MAX_BYTES = 24u * 1024;
 
 const char *phaseName(Phase phase) {
   switch (phase) {
@@ -79,6 +82,23 @@ bool validModel(const String &value, size_t maxLen) {
 
 const AgentKind kKinds[] = {AgentKind::Claude, AgentKind::Cursor, AgentKind::Codex};
 
+void appendChannel(const JsonItem &item, void *ctx) {
+  auto *out = static_cast<String *>(ctx);
+  if (!item.id.length()) return;
+  if (!out->endsWith("[")) *out += ',';
+  *out += "{\"id\":\"";
+  *out += jsonEscape(item.id);
+  *out += "\",\"name\":\"";
+  *out += jsonEscape(item.name);
+  *out += "\",\"group\":\"";
+  *out += jsonEscape(item.group);
+  *out += "\",\"kind\":\"";
+  *out += jsonEscape(item.kind);
+  *out += "\",\"member\":";
+  *out += item.member ? "true" : "false";
+  *out += '}';
+}
+
 }  // namespace
 
 WebUi webUi;
@@ -91,6 +111,7 @@ void WebUi::begin() {
   _server.on("/api/wifi/scan", HTTP_GET, [this]() { handleWifiScan(); });
   _server.on("/api/agents", HTTP_GET, [this]() { handleAgentsGet(); });
   _server.on("/api/agents", HTTP_POST, [this]() { handleAgentsPost(); });
+  _server.on(UriBraces("/api/agents/{}/channels"), HTTP_POST, [this]() { handleAgentChannels(); });
   _server.on("/api/chat", HTTP_POST, [this]() { handleChat(); });
   _server.on("/api/voice", HTTP_GET, [this]() { handleVoiceGet(); });
   _server.on("/api/voice", HTTP_POST, [this]() { handleVoicePost(); });
@@ -394,6 +415,102 @@ void WebUi::handleAgentsPost() {
   sendJson(200, response);
   Serial.print("Saved agent ");
   Serial.println(ConfigStore::agentKey(kind));
+}
+
+// {url?, agent_id?, name?, token?}: unsaved form values, so channels can be
+// listed during first-time setup; empty fields fall back to the saved agent.
+void WebUi::handleAgentChannels() {
+  AgentKind kind = ConfigStore::parseAgent(_server.pathArg(0));
+  if (kind == AgentKind::Unknown) {
+    sendError(400, "Unknown agent.");
+    return;
+  }
+  if (!portal.staConnected()) {
+    sendError(400, "The board is not on Wi-Fi yet.");
+    return;
+  }
+  String body = _server.arg("plain");
+  AgentSettings agent = configStore.agent(kind);
+  struct Field {
+    const char *key;
+    String *into;
+  } fields[] = {{"url", &agent.url}, {"agent_id", &agent.agentId}, {"name", &agent.name}, {"token", &agent.token}};
+  for (Field &f : fields) {
+    String value;
+    jsonTopString(body, f.key, value);
+    value.trim();
+    if (value.length()) *f.into = value;
+  }
+  if (!validUrl(agent.url)) {
+    sendError(400, "Agora URL must look like http://192.168.1.20:4470, with no /api path.");
+    return;
+  }
+  if (agent.agentId.length() && !validId(agent.agentId, 64)) {
+    sendError(400, "Agent id can only use letters, numbers, dashes, and underscores.");
+    return;
+  }
+  if (!validToken(agent.token)) {
+    sendError(400, agent.token.length() ? "Access token looks wrong." : "Add the access token first.");
+    return;
+  }
+  String agoraId = ChatClient::agoraId(agent);
+  if (!validId(agoraId, 64)) {
+    sendError(400, "Fill in the Agent ID first.");
+    return;
+  }
+
+  HttpResponse response = chatClient.fetch(agent, "/api/agents/" + agoraId + "/channels", CHANNELS_MAX_BYTES);
+  agent.token = "";
+  if (response.lowMemory) {
+    sendError(503, "The board is short on memory. Try again in a moment.");
+    return;
+  }
+  if (response.tooBig) {
+    sendError(502, "Too many channels to list here; type the ID.");
+    return;
+  }
+  if (response.status <= 0) {
+    String message = "Could not reach Agora at " + agent.url + ".";
+    sendError(502, message.c_str());
+    return;
+  }
+  if (response.status == 401 || response.status == 403) {
+    sendError(502, "Agora rejected the access token.");
+    return;
+  }
+  if (response.status == 404) {
+    if (response.body.indexOf("Unknown agent") >= 0) {
+      String message = "Agora has no agent with id “" + agoraId + "”. Check the Agent ID.";
+      sendError(502, message.c_str());
+    } else {
+      sendError(502, "This Agora server cannot list channels yet. Type the channel ID instead.");
+    }
+    return;
+  }
+  if (response.status < 200 || response.status >= 300) {
+    String message = "Agora could not list channels (" + String(response.status) + ").";
+    sendError(502, message.c_str());
+    return;
+  }
+
+  JsonItem header;
+  jsonTopObject(response.body, "agent", header);
+  String out;
+  out.reserve(response.body.length() / 2 + 128);
+  out += "{\"ok\":true,\"agent\":{\"id\":\"";
+  out += jsonEscape(header.id.length() ? header.id : agoraId);
+  out += "\",\"name\":\"";
+  out += jsonEscape(header.name.length() ? header.name : agent.name);
+  out += "\",\"live\":";
+  out += header.live ? "true" : "false";
+  out += "},\"channels\":[";
+  if (!jsonEachObject(response.body, "channels", appendChannel, &out)) {
+    sendError(502, "Agora sent something unexpected.");
+    return;
+  }
+  response.body = String();
+  out += "]}";
+  sendJson(200, out);
 }
 
 void WebUi::handleVoiceGet() {
