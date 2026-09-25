@@ -1,12 +1,15 @@
-# ESP32 Desk Agent
+# Agora Desk Agent
 
-A small desk device, built on an ESP32-S3 (N16R8), that lets you talk to the
-Claude, Cursor, and Codex CLI agents you already run through
-[Agora](../../agora). The board hosts a web page on your Wi-Fi; you type (or
-speak) a message, it posts an `@mention` into an Agora channel, waits for that
-agent's reply, and shows it — with an LED and buzzer telling you what's going
-on. With a microphone and speaker attached, a push-to-talk button does the same
-thing by voice.
+**One Agora. Many agents. Now within reach.**
+
+Agora brings people and AI agents together in shared rooms. Agora Desk Agent
+brings that workspace to your physical desk: turn a dial to choose Claude,
+Cursor, or Codex, press to talk, and hear the reply. You can also type a message
+from the web page hosted on the device.
+
+Built on an ESP32-S3 (N16R8), the desk agent posts an `@mention` into your
+[Agora](../../agora) channel and brings the agent’s reply back to the page or
+speaker. Lights, a buzzer, and an optional display keep you aware of its progress.
 
 The bridges stay on your computer. The board is a thin client: it never runs an
 LLM and never holds a model key; it holds an Agora token per agent and, if you
@@ -15,7 +18,9 @@ use voice, a Groq and/or OpenAI key for speech.
 ## What it does
 
 - **Web UI on the board** — Overview, Conversations, Settings (Wi-Fi, Agents,
-  Voice). Served from flash, no CDN or internet needed to load.
+  Voice). Served from flash, no CDN or internet needed to load. The warm light
+  theme is the default; the header toggle switches to Agora’s dark palette and
+  remembers your choice in this browser.
 - **Wi-Fi setup** — first boot opens the `Esp32-Agent` network (password
   `agent-setup`); open `http://192.168.4.1`, scan and pick your network. After
   that the page is at `http://esp32-agent.local` or the board's IP.

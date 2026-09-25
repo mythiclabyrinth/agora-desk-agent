@@ -20,3 +20,11 @@ Sources retrieved September 24, 2026:
 Brand ownership remains with Anthropic, Anysphere, and OpenAI respectively.
 The files here are source references; Arduino does not need to upload a separate
 filesystem image or serve this directory.
+
+## Agora identity
+
+`agora.png` is the existing 64 × 64 app icon from the local Agora repository,
+`crates/agora-desktop/icons/64x64.png` (copied September 25, 2026). It is embedded
+once as the `i-agora` SVG symbol in `web/index.html` and reused in the sidebar
+and desk illustration. The charcoal background, violet accent, and teal highlight
+follow `agora/web/src/styles.css`. No runtime asset requests are made.
