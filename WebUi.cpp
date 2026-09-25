@@ -443,9 +443,7 @@ void WebUi::handleVoiceGet() {
   body += wakeWord.available() ? "true" : "false";
   body += ",\"wake_phrase\":\"";
   body += jsonEscape(wakeWord.phrase());
-  body += "\",\"wake_button_pin\":";
-  body += String(MUTE_BUTTON_PIN);
-  body += ",\"listen_led_pin\":";
+  body += "\",\"listen_led_pin\":";
   body += String(LISTEN_LED_PIN);
   body += '}';
   sendJson(200, body);
@@ -476,7 +474,7 @@ String WebUi::wakeJson() {
 }
 
 // {enabled?, sensitivity?}: the page's wake toggle (the same setting as the
-// mute button) and sensitivity. Allowed mid-exchange, unlike /api/voice.
+// dial's long press) and sensitivity. Allowed mid-exchange, unlike /api/voice.
 void WebUi::handleVoiceWake() {
   String body = _server.arg("plain");
   bool enabled = false;

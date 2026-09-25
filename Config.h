@@ -51,8 +51,8 @@ struct VoiceSettings {
 bool voiceProviderKnown(const String &provider);
 bool voiceAccentKnown(const String &accent);
 
-// Wake-word listening. `enabled` is the single source of truth: the mute
-// button and the page both flip it, and the blue LED follows it.
+// Wake-word listening. `enabled` is the single source of truth: the dial's
+// long press and the page both flip it, and the blue LED follows it.
 struct WakeSettings {
   bool enabled = false;
   String sensitivity = "medium";  // low | medium | high

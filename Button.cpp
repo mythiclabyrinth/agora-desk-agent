@@ -8,6 +8,7 @@ void DebouncedButton::begin(uint8_t pin) {
   _raw = digitalRead(pin) == LOW;
   _pressed = _raw;
   _changedAt = millis();
+  _pressedAt = _changedAt;
 }
 
 int8_t DebouncedButton::poll() {
@@ -20,5 +21,6 @@ int8_t DebouncedButton::poll() {
   }
   if (raw == _pressed || now - _changedAt < BUTTON_DEBOUNCE_MS) return 0;
   _pressed = raw;
+  if (_pressed) _pressedAt = _changedAt;
   return _pressed ? 1 : -1;
 }

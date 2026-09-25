@@ -54,7 +54,7 @@ The page talks to the firmware only through the JSON API in `WebUi.cpp`:
 | `POST /api/wifi`, `GET /api/wifi/scan` | join / scan |
 | `GET/POST /api/voice`, `POST /api/voice/keys`, `POST /api/voice/test` | voice settings; keys write-only; POST fields are optional and the page sends `agent` only when picked, so it never undoes a dial turn |
 | `POST /api/voice/talk` | `{action: start\|stop, agent}` drives the board mic from the page |
-| `POST /api/voice/wake` | `{enabled?, sensitivity?}` wake word on/off (= the mute button) and low\|medium\|high; allowed mid-exchange → `{wake}` |
+| `POST /api/voice/wake` | `{enabled?, sensitivity?}` wake word on/off (= the dial's long press) and low\|medium\|high; allowed mid-exchange → `{wake}` |
 | `POST /api/voice/transcribe` | multipart clip from the browser mic → `{text}` |
 | `POST /api/voice/say` | `{text}` → finite WAV for the browser to play |
 | `POST /api/voice/tone` | a second of 440 Hz through the desk speaker; checks the amp without a provider |
@@ -118,12 +118,16 @@ Adding a field: add it to the firmware handler, the page, **and**
   is absent and the page offers the desk mic instead. Don't "fix" this in JS —
   it's a browser rule. HTTPS on the board would mean replacing `WebServer` with
   `esp_https_server`.
-- **Pins** live in `Board.h`; every header pin is taken, 8 (SDA) and 7 (SCL)
-  by the LCD's I2C bus.
-  Strapping pins 3 and 46 carry only reset-safe parts: 46 must never be pulled
-  high (it would block uploads), so it takes a bare button to GND; 3 is ignored
-  at boot. I2S port 0 is the mic, port 1 the amp. The KY-040 is powered from
-  3V3, never 5V.
+- **Pins** live in `Board.h`, whose header comment maps every header pin.
+  Free: GPIO 5 and GPIO 46. 46 is a strapping pin that must not be pulled high
+  while GPIO 0 is low (uploads fail): a bare button to GND is fine, a pulled-up
+  part is not. Strapping pin 3 (the dial's knob switch) is ignored at boot on a
+  stock S3. 8 (SDA) and 7 (SCL) are the LCD's I2C bus; I2S port 0 is the mic,
+  port 1 the amp. The KY-040 is powered from 3V3, never 5V.
+- **The knob switch has two meanings.** `AgentDial` fires the long press
+  (`DIAL_LONG_PRESS_MS`, → `VoiceFlow::toggleMute`) while the knob is still
+  held, and the release that follows is not a short press. A short press
+  replays the agent cue, except mid-recording, where it does nothing.
 - **The dial ISR is IRAM-only.** `Dial::onEdge` and `QuadratureDecoder::step`
   are `IRAM_ATTR`, the table is `DRAM_ATTR`, pins are read with `gpio_ll`, and
   the counter sits behind a `portMUX`. Keep it that way: no `Serial`,
@@ -144,7 +148,7 @@ Adding a field: add it to the firmware handler, the page, **and**
   must do the same, or replies containing the phrase will wake the board.
 - **Wake settings are cached** in `ConfigStore` (`wake()`), because `loop()`
   reads them every pass; `wake_enabled` is the single source of truth for the
-  mute button, the page toggle and the blue LED (LED = armed or recording).
+  dial's long press, the page toggle and the blue LED (LED = armed or recording).
 - **Hands-free clips without speech are never sent** (Whisper turns silence
   into "Thank you."). VAD and wake thresholds live in `Board.h`; they are
   untuned on real hardware.

@@ -17,6 +17,7 @@ class Dial {
   int takeSteps();
   // The knob's switch: +1 on a settled press, -1 on a settled release.
   int8_t pollPress() { return _button.poll(); }
+  unsigned long heldMs() const { return _button.heldMs(); }
 
  private:
   static void onEdge();
