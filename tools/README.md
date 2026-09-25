@@ -10,6 +10,11 @@ nothing is forwarded to a board, and demo saves last only until the process stop
 - `/?scenario=scan-empty#settings`: Wi-Fi scan returns no networks.
 - `/?scenario=scan-error#settings`: Wi-Fi scan fails; manual entry remains available.
 - `/?scenario=voice`: watch a talk-button conversation land in the chat.
+- `/?scenario=wake`: wake listening switches on, the score meter climbs, “Hey Jarvis” is
+  heard, the VAD ends the clip, and the exchange lands in the chat with the “Heard …” banner.
+  Settings › Voice › Devices shows the Wake word section (toggle = the desk's mute
+  button, sensitivity, live score) alongside the status checks, chat page audio and the
+  talk button's agent. Speech & voice holds only speech-to-text and text-to-speech.
 - Wi-Fi scanning and joining use demo data only.
 - Send a message containing `preview-error` to simulate a failed send.
 - Other messages receive an explicitly labeled demo response after four seconds.
@@ -49,3 +54,9 @@ python3 web/build.py --check  # fails if Page.h is stale (preview also warns)
 Then compile and upload `Esp32Agent.ino` with your board's usual ESP32-S3 settings.
 The firmware serves the gzipped bytes with `Content-Encoding: gzip`; every browser
 inflates them transparently.
+
+## Wake word model
+
+`tools/wake/` holds the model the firmware runs (`models/*.tflite` + `.json`) and
+`make_model_header.py`, which generates `WakeModel.h`. See
+[tools/wake/README.md](wake/README.md) for training a "Hey Agora" model.

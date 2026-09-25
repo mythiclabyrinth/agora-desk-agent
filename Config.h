@@ -49,6 +49,15 @@ struct VoiceSettings {
 bool voiceProviderKnown(const String &provider);
 bool voiceAccentKnown(const String &accent);
 
+// Wake-word listening. The persisted flag is the single source of truth: the
+// GPIO 7 button and the page both flip it here, and the blue LED follows it.
+struct WakeSettings {
+  bool enabled = false;
+  String sensitivity = "medium";  // low | medium | high
+};
+
+bool wakeSensitivityKnown(const String &level);
+
 class ConfigStore {
  public:
   void begin();
@@ -64,6 +73,10 @@ class ConfigStore {
   void saveVoiceFeatures(const VoiceSettings &incoming);
   bool saveVoiceKey(const String &provider, const String &key);  // empty key clears
 
+  // Cached in RAM: loop() asks every pass, and NVS reads are not free.
+  const WakeSettings &wake() const { return _wake; }
+  void saveWake(const WakeSettings &incoming);
+
   static AgentKind parseAgent(const String &id);
   static const char *agentKey(AgentKind kind);
   static const char *agentTitle(AgentKind kind);
@@ -72,6 +85,7 @@ class ConfigStore {
   String fieldKey(AgentKind kind, const char *suffix);
 
   Preferences _prefs;
+  WakeSettings _wake;
 };
 
 extern ConfigStore configStore;

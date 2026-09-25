@@ -1,0 +1,26 @@
+TensorFlow Lite Micro audio microfrontend, vendored.
+
+Origin: https://github.com/tensorflow/tflite-micro
+        tensorflow/lite/experimental/microfrontend/lib/
+Commit: b57ba0d0d40d66cc775fa06fbffcec9e0c50b2c8 (main, 2026-09-23)
+License: Apache-2.0 (LICENSE in this folder; headers kept in every file).
+
+Why it is here: the esp32 Arduino core links esp-tflite-micro but does not
+ship the microfrontend, and microWakeWord models expect exactly its features
+(settings in Wake.cpp). Arduino compiles src/ recursively, so these files
+build with the sketch.
+
+Local changes, nothing else:
+- Includes rewritten from "tensorflow/lite/experimental/microfrontend/lib/x.h"
+  to "x.h" so the folder builds without an include path.
+- kiss_fft_int16.cc not vendored, and kiss_fft_int16.h declares namespace
+  kiss_fft_fixed16 (aliased to upstream's kissfft_fixed16). The core's
+  libespressif__esp-tflite-micro.a already contains a FIXED_POINT=16 kissfft
+  in that namespace, built against the kissfft headers the core ships
+  (third_party/kissfft), so the frontend links to it instead of a second copy.
+- Only the files the frontend needs; *_io, *_main, *_test and BUILD dropped.
+
+To update: download the same file list at a newer commit, redo the two edits
+above, and compile; a linker error for kiss_fft_fixed16 means a core update
+dropped it, in which case vendor kiss_fft.c and tools/kiss_fftr.c from the
+matching kissfft and restore upstream's kiss_fft_int16.cc.

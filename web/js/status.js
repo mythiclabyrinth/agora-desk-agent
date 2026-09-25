@@ -57,6 +57,7 @@ async function refreshStatus() {
     statusAgents = s.agents || [];
     const v = s.voice || {};
     trackVoice(v);
+    if (v.wake) trackWake(v.wake);
     boardBusy = !!s.listening || voiceBusy;
     $('#link').textContent = online ? 'Desk online' : 'Wi-Fi not connected';
     $('#link-dot').classList.toggle('on', online);
@@ -117,13 +118,27 @@ function agentLabel(id) {
   const a = agents.find((a) => a.id === id) || statusAgents.find((a) => a.id === id);
   return a?.name || a?.title || id || 'your agent';
 }
+// Wake word state from /api/status: the meter in Settings › Voice follows the detector's score.
+function trackWake(w) {
+  wakeState = w;
+  const m = $('#wake-meter');
+  if (!m) return;
+  const pct = Math.round(Math.max(0, Math.min(1, +w.score || 0)) * 100);
+  m.firstChild.style.width = pct + '%';
+  m.setAttribute('aria-valuenow', String(pct));
+  m.classList.toggle('idle', !w.armed);
+}
 function voiceBanner(v) {
   return (
     {
       recording:
-        v.source === 'page'
-          ? 'Listening to you… tap the mic again to send.'
-          : 'Listening to you… let go of the button to send.',
+        v.source === 'wake'
+          ? 'Heard “' +
+            (v.wake?.phrase || wakeState.phrase || 'the wake word') +
+            '”… go ahead, I’ll send when you pause.'
+          : v.source === 'page'
+            ? 'Listening to you… tap the mic again to send.'
+            : 'Listening to you… let go of the button to send.',
       transcribing: 'Writing down what you said…',
       waiting: 'Waiting for ' + agentLabel(v.agent) + ' to reply…',
       speaking: 'Reading the reply aloud…',

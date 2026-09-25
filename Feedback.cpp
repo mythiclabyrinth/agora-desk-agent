@@ -1,6 +1,7 @@
 #include "Feedback.h"
 
 #include "Board.h"
+#include "Wake.h"
 
 namespace {
 
@@ -13,6 +14,8 @@ Feedback feedback;
 void Feedback::begin() {
   pinMode(LED_PIN, OUTPUT);
   pinMode(BUZZER_PIN, OUTPUT);
+  pinMode(LISTEN_LED_PIN, OUTPUT);
+  digitalWrite(LISTEN_LED_PIN, LOW);
   allOff();
 }
 
@@ -22,6 +25,9 @@ void Feedback::allOff() {
 }
 
 void Feedback::beep(int duration) {
+  // The mic is an arm's length from the buzzer; keep the wake word deaf
+  // through the beep and its echo.
+  wakeWord.holdOff(duration + WAKE_QUIET_AFTER_SOUND_MS);
   digitalWrite(BUZZER_PIN, HIGH);
   delay(duration);
   digitalWrite(BUZZER_PIN, LOW);
@@ -62,6 +68,33 @@ void Feedback::blink() {
 
 void Feedback::tick() {
   beep(30);
+}
+
+void Feedback::wakeChime() {
+  beep(40);
+  delay(70);
+  beep(40);
+}
+
+void Feedback::cancel() {
+  // An active buzzer has one pitch; "low" here means long and single.
+  beep(300);
+}
+
+void Feedback::muteToggled(bool muted) {
+  if (muted) {
+    beep(60);
+  } else {
+    beep(40);
+    delay(70);
+    beep(120);
+  }
+}
+
+void Feedback::listenLed(bool on) {
+  if (_listenLed == (on ? 1 : 0)) return;
+  _listenLed = on ? 1 : 0;
+  digitalWrite(LISTEN_LED_PIN, on ? HIGH : LOW);
 }
 
 void Feedback::follow(Phase phase, bool hold) {

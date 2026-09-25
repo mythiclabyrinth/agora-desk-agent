@@ -2006,9 +2006,6 @@ body:has(#wifi-dialog[open]) {
   font-size: 12px;
   line-height: 1.65;
 }
-.voice-meta {
-  grid-template-columns: 1fr 1fr;
-}
 .voice-save {
   display: flex;
   align-items: center;
@@ -2056,7 +2053,7 @@ select:focus-visible {
     padding: 10px;
   }
   .voice-meta {
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: 1fr;
   }
   .key-input {
     flex-wrap: wrap;
@@ -2088,4 +2085,26 @@ select:focus-visible {
     animation: none !important;
     transition: none !important;
   }
+}
+.wake-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.wake-meter {
+  height: 8px;
+  border-radius: 99px;
+  background: var(--soft);
+  overflow: hidden;
+}
+.wake-meter span {
+  display: block;
+  height: 100%;
+  width: 0;
+  background: var(--green);
+  transition: width 0.3s;
+}
+.wake-meter.idle span {
+  background: var(--muted);
 }

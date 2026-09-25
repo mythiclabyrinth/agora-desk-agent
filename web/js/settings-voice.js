@@ -1,4 +1,5 @@
-// Settings > Voice: credentials, speech-to-text, text-to-speech, talk button, chat page audio.
+// Settings > Voice, in three tabs: credentials; speech (speech-to-text, text-to-speech); devices (mic and
+// speaker status, chat page audio, wake word and mute, talk button).
 // Voice catalog, copied from Agora's config.rs so the two pickers offer the same choices.
 const VOICE_CATALOG = {
   providers: [
@@ -102,8 +103,10 @@ async function renderVoice() {
   tabs.setAttribute('role', 'tablist');
   tabs.setAttribute('aria-label', 'Voice settings');
   const credentials = el('div', 'voice-stack'),
-    speech = el('div', 'voice-stack');
-  const panes = { credentials, speech };
+    speech = el('div', 'voice-stack'),
+    devices = el('div', 'voice-stack');
+  const panes = { credentials, speech, devices };
+  const order = Object.keys(panes);
   const activate = (name, focus = false) => {
     voiceTab = name;
     Object.entries(panes).forEach(([id, pane]) => {
@@ -117,7 +120,8 @@ async function renderVoice() {
   };
   [
     ['credentials', 'Credentials'],
-    ['speech', 'Speech & audio'],
+    ['speech', 'Speech & voice'],
+    ['devices', 'Devices'],
   ].forEach(([id, title], index) => {
     const tab = button(title, '', () => activate(id));
     tab.id = 'voice-tab-' + id;
@@ -125,12 +129,16 @@ async function renderVoice() {
     tab.setAttribute('role', 'tab');
     tab.setAttribute('aria-controls', 'voice-panel-' + id);
     tab.addEventListener('keydown', (e) => {
-      if (['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(e.key)) {
+      const step = { ArrowLeft: -1, ArrowRight: 1 }[e.key];
+      if (step || e.key === 'Home' || e.key === 'End') {
         e.preventDefault();
-        activate(
-          e.key === 'Home' ? 'credentials' : e.key === 'End' ? 'speech' : index ? 'credentials' : 'speech',
-          true,
-        );
+        const next =
+          e.key === 'Home'
+            ? 0
+            : e.key === 'End'
+              ? order.length - 1
+              : (index + step + order.length) % order.length;
+        activate(order[next], true);
       }
     });
     panes[id].id = 'voice-panel-' + id;
@@ -258,19 +266,33 @@ async function renderVoice() {
   const pair = el('div', 'field-pair');
   pair.append(accent.wrap, voice.wrap);
   tts.append(ttsProvider.wrap, pair, advancedModel(ttsModel.wrap), ttsHint);
+  // Readiness at a glance: the desk hardware, and whether a speech key is in place for listening.
+  const readiness = panel('Status', 'What your desk can do right now.');
+  const meta = el('div', 'voice-meta');
+  const syncReadiness = () => {
+    const sttKey = !!v.keys[v.stt_provider];
+    meta.replaceChildren();
+    [
+      ['Microphone', v.mic ? 'Ready' : 'Unavailable', 'For your spoken messages'],
+      ['Speaker', v.speaker ? 'Ready' : 'Unavailable', 'For replies aloud'],
+      [
+        'Speech key',
+        sttKey ? 'Ready' : 'Not set',
+        sttKey ? 'Turns your voice into text' : 'Add one under Credentials',
+      ],
+    ].forEach(([k, val, sub]) => {
+      const d = el('div');
+      d.append(el('strong', '', val), document.createTextNode(k + ' · ' + sub));
+      meta.append(d);
+    });
+  };
+  readiness.append(meta);
   const talk = panel(
     'Desk talk button',
     'Hold to speak, release to send. Replies play through your desk speaker.',
   );
-  const meta = el('div', 'voice-meta');
-  [
-    ['Microphone', v.mic ? 'Ready' : 'Unavailable', 'For your spoken messages'],
-    ['Speaker', v.speaker ? 'Ready' : 'Unavailable', 'For replies aloud'],
-  ].forEach(([k, val, sub]) => {
-    const d = el('div');
-    d.append(el('strong', '', val), document.createTextNode(k + ' · ' + sub));
-    meta.append(d);
-  });
+  const talkNote = el('p', 'note');
+  talkNote.setAttribute('role', 'status');
   const agentSel = selectField(
     'Send to',
     (agents.length ? agents : agentIds.map((id) => ({ id, name: id }))).map((a) => [
@@ -280,7 +302,8 @@ async function renderVoice() {
     v.agent,
     'The chat page’s mic uses whichever agent is open there.',
   );
-  talk.append(meta, agentSel.wrap);
+  talk.append(agentSel.wrap, talkNote);
+  const wake = wakePanel(v);
   const fill = (sel, options, value) => {
     sel.replaceChildren();
     options.forEach((o) => {
@@ -343,10 +366,11 @@ async function renderVoice() {
     sttHint.classList.toggle('bad', !v.keys[p]);
   };
   let saveTimer = 0;
-  const saveFeatures = () => {
+  // The talk button's agent lives on the Devices tab, so its save status shows there, not on Speech.
+  const saveFeatures = (target = featureNote) => {
     clearTimeout(saveTimer);
     saveTimer = setTimeout(async () => {
-      note(featureNote, 'Saving…');
+      note(target, 'Saving…');
       try {
         const data = await api('/api/voice', {
           stt_provider: sttProvider.select.value,
@@ -361,20 +385,21 @@ async function renderVoice() {
           agent: agentSel.select.value,
         });
         note(
-          featureNote,
+          target,
           'Voice settings saved.' +
             (data.stt_ready && data.tts_ready ? '' : ' Add the missing key under Credentials to finish.'),
         );
-        featureNote.classList.add('good');
+        target.classList.add('good');
         refreshStatus();
       } catch (err) {
-        note(featureNote, err.message, true);
+        note(target, err.message, true);
       }
     }, 250);
   };
   sttProvider.select.addEventListener('change', () => {
     v.stt_provider = sttProvider.select.value;
     syncStt();
+    syncReadiness();
     saveFeatures();
   });
   sttModel.select.addEventListener('change', () => {
@@ -400,7 +425,7 @@ async function renderVoice() {
     syncTts();
     saveFeatures();
   });
-  agentSel.select.addEventListener('change', saveFeatures);
+  agentSel.select.addEventListener('change', () => saveFeatures(talkNote));
   // Per-browser choice, so a phone can use its own mic while the desk's hardware stays for the button.
   const page = panel(
     'Microphone & speaker',
@@ -436,9 +461,11 @@ async function renderVoice() {
   keysChanged = () => {
     syncStt();
     syncTts();
+    syncReadiness();
   };
   syncStt();
   syncTts();
+  syncReadiness();
   const privacy = el(
     'p',
     'note',
@@ -447,7 +474,7 @@ async function renderVoice() {
   credentials.append(
     creds,
     privacy,
-    button('Continue to speech & audio →', 'ghost', () => activate('speech', true)),
+    button('Continue to speech & voice →', 'ghost', () => activate('speech', true)),
   );
   const saveBar = el('div', 'voice-save');
   note(featureNote, 'Changes save automatically.');
@@ -455,8 +482,96 @@ async function renderVoice() {
     featureNote,
     button('Manage credentials', 'text-button', () => activate('credentials', true)),
   );
-  speech.append(saveBar, stt, tts, page, talk);
-  stack.append(tabs, credentials, speech);
+  speech.append(saveBar, stt, tts);
+  devices.append(readiness, page, wake, talk);
+  stack.append(tabs, credentials, speech, devices);
   root.append(stack);
-  activate(voiceTab);
+  activate(panes[voiceTab] ? voiceTab : 'credentials');
 }
+// Wake word: one setting shared with the desk's mute button (wake_enabled == not muted). The blue LED shows when
+// the desk mic is listening. The meter reads the detector's smoothed score from /api/status, for tuning.
+function wakePanel(v) {
+  const phrase = v.wake_phrase || 'the wake word';
+  const p = panel(
+    'Wake word',
+    'Say “' + phrase + '”, wait for two beeps, then speak. The desk stops recording when you pause.',
+  );
+  const row = el('div', 'wake-row');
+  const state = el('span', 'badge');
+  const toggle = button('', 'ghost sm');
+  row.append(state, toggle);
+  const sens = selectField(
+    'Sensitivity',
+    [
+      ['low', 'Low — fewer false wakes'],
+      ['medium', 'Medium — the model’s default'],
+      ['high', 'High — hears you from further away'],
+    ],
+    v.wake_sensitivity || 'medium',
+  );
+  const meter = el('div', 'wake-meter');
+  meter.id = 'wake-meter';
+  meter.setAttribute('role', 'meter');
+  meter.setAttribute('aria-label', 'Wake word score');
+  meter.setAttribute('aria-valuemin', '0');
+  meter.setAttribute('aria-valuemax', '100');
+  meter.append(el('span'));
+  const meterWrap = el('label', '', 'Live score');
+  meterWrap.append(
+    meter,
+    el('small', '', 'How sure the desk is that it just heard “' + phrase + '”. Useful for tuning.'),
+  );
+  const status = el('p', 'note');
+  status.setAttribute('role', 'status');
+  const hint = el(
+    'p',
+    'note',
+    'The blue light on the desk is on while its microphone is listening. The mute button (GPIO ' +
+      (v.wake_button_pin ?? 7) +
+      ') switches the wake word off and on; the talk button works either way.',
+  );
+  let on = !!v.wake_enabled;
+  const sync = () => {
+    state.textContent = !v.wake_available ? 'Unavailable' : on ? 'Listening' : 'Muted';
+    state.classList.toggle('on', on && !!v.wake_available);
+    toggle.textContent = on ? 'Mute' : 'Listen for “' + phrase + '”';
+    toggle.setAttribute('aria-pressed', String(on));
+    toggle.disabled = !v.wake_available;
+    sens.select.disabled = !v.wake_available;
+    meterWrap.hidden = !on || !v.wake_available;
+    if (!v.wake_available)
+      note(status, 'The wake word engine did not start on this board. The talk button still works.', true);
+    else if (on && !v.stt_ready)
+      note(status, 'Add a speech-to-text key under Credentials so the desk can act on it.', true);
+  };
+  const save = async (body, done) => {
+    note(status, 'Saving…');
+    try {
+      const data = await api('/api/voice/wake', body);
+      on = !!data.wake.enabled;
+      v.wake_enabled = on;
+      v.wake_sensitivity = data.wake.sensitivity;
+      note(status, done);
+      status.classList.add('good');
+      trackWake(data.wake);
+      refreshStatus();
+    } catch (err) {
+      note(status, err.message, true);
+    }
+    sync();
+  };
+  toggle.addEventListener('click', () =>
+    save({ enabled: !on }, !on ? 'Listening for “' + phrase + '”.' : 'Wake word muted.'),
+  );
+  sens.select.addEventListener('change', () =>
+    save({ sensitivity: sens.select.value }, 'Sensitivity saved.'),
+  );
+  p.append(row, sens.wrap, meterWrap, status, hint);
+  sync();
+  return p;
+}
+// While the meter is on screen, poll a little faster so it moves while you talk.
+setInterval(() => {
+  const m = $('#wake-meter');
+  if (m && m.offsetParent && !document.hidden && !voiceBusy) refreshStatus();
+}, 1000);
