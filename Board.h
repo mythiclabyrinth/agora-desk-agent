@@ -67,8 +67,9 @@ constexpr int8_t AMP_DATA_PIN = 17;   // DIN
 constexpr int SPEAKER_GAIN = 2;
 // The I2S DMA holds 60 ms and the speech APIs deliver at about real time
 // with pauses, so this much of each piece waits in PSRAM before the amp
-// starts; playback then runs that far behind the network.
-constexpr unsigned long SPEAKER_PREBUFFER_MS = 600;
+// starts; playback then runs that far behind the network. Speech logs a
+// per-piece "starved" estimate to tune it by.
+constexpr unsigned long SPEAKER_PREBUFFER_MS = 250;
 
 // 16 kHz mono is what Whisper wants and keeps a 15 s clip under 500 KB.
 constexpr uint32_t MIC_SAMPLE_RATE = 16000;
@@ -123,7 +124,7 @@ constexpr float VAD_FLOOR_RISE_DB_PER_S = 1.5f;
 // A digitally silent mic would put the floor at 0 dB and make a breath speech.
 constexpr float VAD_FLOOR_MIN_DB = 30.0f;
 // Wake recordings end on their own: after this much quiet following speech,
-constexpr unsigned long VAD_END_SILENCE_MS = 900;
+constexpr unsigned long VAD_END_SILENCE_MS = 600;
 // or cancelled if no speech starts within this long of the wake chime,
 constexpr unsigned long VAD_NO_SPEECH_MS = 4000;
 // where "speech" means at least this much of it. RECORD_MAX_MS still caps.
@@ -172,8 +173,22 @@ constexpr char AP_SSID[] = "Esp32-Agent";
 constexpr char AP_PASSWORD[] = "agent-setup";
 constexpr char MDNS_HOST[] = "esp32-agent";
 
+// Speaking blocks the web server; page and typed replies wait this long so the page can fetch them.
+constexpr unsigned long SPEAK_GRACE_MS = 1500;
+
 constexpr unsigned long LISTEN_TIMEOUT_MS = 180000;
+// REST polling is the fallback while Agora's socket is down...
 constexpr unsigned long LISTEN_POLL_MS = 2000;
+// ...and a slow safety read while it is up, in case an event is lost.
+constexpr unsigned long LISTEN_SAFETY_POLL_MS = 15000;
+// Agora's UI socket: retry spacing for a failed connect or a dropped link...
+constexpr unsigned long AGORA_WS_RETRY_MS = 3000;
+// ...and a ping this often; two missed pongs (3 s each) drop the link.
+constexpr uint32_t AGORA_WS_PING_MS = 15000;
+constexpr uint32_t AGORA_WS_PONG_MS = 3000;
+constexpr uint8_t AGORA_WS_MISSED_PONGS = 2;
+// A wss:// link holds a TLS session (~40 KB); open one only above this much free heap.
+constexpr uint32_t AGORA_WSS_MIN_HEAP = 90000;
 constexpr unsigned long WIFI_BOOT_WAIT_MS = 12000;
 constexpr unsigned long WIFI_JOIN_WAIT_MS = 15000;
 

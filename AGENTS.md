@@ -7,7 +7,8 @@ Working guide for AI agents and contributors in this repo. For what the device
 
 An Arduino sketch for an ESP32-S3 (N16R8) that acts as a thin desk client for
 the Agora CLI bridges (Claude, Cursor, Codex): it hosts a web page, posts
-`@mention` messages into an Agora channel, and polls for the agent's reply.
+`@mention` messages into an Agora channel, and takes the agent's reply from
+Agora's WebSocket (REST polling while it is down).
 Voice (talk button, wake word, browser mic) goes through Groq or OpenAI.
 
 Two languages, one build:
@@ -22,7 +23,8 @@ Two languages, one build:
 ```bash
 # firmware (Arduino IDE 2 or arduino-cli), ESP32S3 Dev Module,
 # PSRAM=OPI, Flash=16MB, Partition=16M Flash (3MB APP/9.9MB FATFS)
-# library: "LiquidCrystal I2C" (Frank de Brabander), from the Library Manager
+# libraries, from the Library Manager: "LiquidCrystal I2C" (Frank de Brabander),
+# "WebSockets" (Markus Sattler, 2.7.x)
 arduino-cli compile --fqbn esp32:esp32:esp32s3:PSRAM=opi,FlashSize=16M,PartitionScheme=app3M_fat9M_16MB .
 
 # web page
@@ -53,7 +55,7 @@ The page talks to the firmware only through the JSON API in `WebUi.cpp`:
 | `GET/POST /api/agents` | per-agent settings (token is write-only) |
 | `POST /api/agents/{claude\|cursor\|codex}/channels` | `{url?, agent_id?, name?, token?}` (empty → saved value) → Agora's `GET /api/agents/{id}/channels` → `{agent: {id, name, live}, channels: [{id, name, group, kind}]}`, only the channels the agent belongs to; upstream failures are 502 with a sentence |
 | `POST /api/wifi`, `GET /api/wifi/scan` | join / scan |
-| `GET/POST /api/voice`, `POST /api/voice/keys`, `POST /api/voice/test` | voice settings; keys write-only; POST fields are optional and the page sends `agent` only when picked, so it never undoes a dial turn |
+| `GET/POST /api/voice`, `POST /api/voice/keys`, `POST /api/voice/test` | voice settings; keys write-only; POST fields are optional and the page sends `agent` only when picked, so it never undoes a dial turn; `stt_language` is an ISO code (`en`) or empty for auto-detect |
 | `POST /api/voice/talk` | `{action: start\|stop, agent}` drives the board mic from the page |
 | `POST /api/voice/wake` | `{enabled?, cutoff?}` wake word on/off (= the dial's long press) and the detector cutoff, 0.50–0.99; allowed mid-exchange → `{wake}` |
 | `POST /api/voice/transcribe` | multipart clip from the browser mic → `{text}` |
@@ -66,7 +68,7 @@ Adding a field: add it to the firmware handler, the page, **and**
 ## Conventions
 
 - **C++**: one class per concern, a global singleton per module
-  (`configStore`, `portal`, `chatClient`, `webUi`, `voiceFlow`, `audio`,
+  (`configStore`, `portal`, `chatClient`, `agoraSocket`, `webUi`, `voiceFlow`, `audio`,
   `speech`, `feedback`, `mic`, `wakeWord`, `dial`, `agentDial`, `display`,
   `statusScreen`), `begin()` in `setup()`, `update()`/`handle()` in `loop()`.
   Comments explain *why*, not what. Pins and limits live in `Board.h`; never
@@ -79,7 +81,8 @@ Adding a field: add it to the firmware handler, the page, **and**
   with a fallback to heap and a hard cap. Check `ESP.getFreeHeap()` before big
   network calls, as `ChatClient` does.
 - **JSON**: `Json.h` is a minimal reader (top-level strings/numbers/bools, the
-  Agora `messages` array, and flat objects via `jsonEachObject`/`jsonTopObject`). Responses are built by string concatenation; escape
+  Agora `messages` array, socket event frames via `jsonEventMessage`, and flat
+  objects via `jsonEachObject`/`jsonTopObject`). Responses are built by string concatenation; escape
   every user value with `jsonEscape`.
 - **Web JS**: classic scripts concatenated in the order `index.html` lists them,
   sharing one global scope. Top-level `let`/`const` that other files read at
@@ -93,8 +96,9 @@ Adding a field: add it to the firmware handler, the page, **and**
 - **The loop is cooperative and single-threaded.** `speech.transcribe/speak/
   synthesize`, `Portal::join` and `Feedback` beeps block; while they run the web
   server does not answer. The page tolerates this (`voiceBusy`/`pageVoice`
-  suppress "board unreachable" errors) and `VoiceFlow` waits `SPEAK_GRACE_MS`
-  so the page can fetch a reply before the speaker takes over. Keep that
+  suppress "board unreachable" errors) and, for page and typed exchanges,
+  `VoiceFlow` waits `SPEAK_GRACE_MS` so the page can fetch a reply before the
+  speaker takes over; wake and button replies speak at once. Keep that
   tolerance if you add blocking work — or move it to a FreeRTOS task.
 - **Speech responses are chunked.** `HTTPClient::getStreamPtr()` is the raw
   socket; `Speech::BodyReader` strips `Transfer-Encoding: chunked`. Groq's WAV
@@ -112,9 +116,20 @@ Adding a field: add it to the firmware handler, the page, **and**
   any endpoint (`token_set` / `keys: {groq: true}` only). `ChatClient` drops the
   token from RAM after each job. The board's HTTP API has no auth and NVS is
   unencrypted — don't add anything that returns a stored secret.
+- **The reply rides Agora's UI socket** (`AgoraSocket`, `GET {url}/ws?token=`).
+  `ChatClient` opens it at job start (`VoiceFlow` already at recording start
+  for plain `ws://`), still POSTs over REST, and takes the first event that
+  passes `ReplyWatch` (job, channel, id after the post, same agent). While the
+  link is down it polls REST every `LISTEN_POLL_MS`; each (re)connect after
+  the POST does one catch-up poll. The token lives only in the handshake: the
+  link forgets the URL once connected, so a drop needs `open()` again. It is
+  closed on job end, Wi-Fi loss, agent save and before speech (which blocks
+  `loop()` past the heartbeat). `wss://` opens only above `AGORA_WSS_MIN_HEAP`.
+  Never log frames: they carry other people's messages.
 - **`@mention` resolution** is by exact `agent_id` or the slug of the display
-  name, matching Agora. `ChatClient::sameAgent` picks the reply the same way;
-  if a user's replies aren't caught, the id is wrong, not the polling.
+  name, matching Agora. `replyFromAgent` (`ReplyWatch.h`) picks the reply the
+  same way for the poll and the socket; if a user's replies aren't caught, the
+  id is wrong, not the transport.
 - **The Agora agent id is `ChatClient::agoraId`**: `agent_id`, else the slug of
   the display name. The desk key (`claude`/`cursor`/`codex`) is only the board's
   slot name; never send it to Agora (e.g. the channel list route).
@@ -182,7 +197,7 @@ Adding a field: add it to the firmware handler, the page, **and**
 - Firmware: compile with the exact FQBN above. For pure logic (`Json.h`,
   `Speech::BodyReader`, `Wav.h`, `slugify`, `speechChunks`, `Vad`,
   `wakePhraseEnd`, `QuadratureDecoder`, `dialPick`, `LcdText.h`,
-  `Screens.h`), a throwaway host test with a tiny `String`/`millis` shim compiles under clang in seconds; keep
+  `Screens.h`, `ReplyWatch.h`, `VoiceTrace.h`), a throwaway host test with a tiny `String`/`millis` shim compiles under clang in seconds; keep
   such files out of the repo or under a `tests/` folder if they become permanent.
 - Page: `python3 tools/preview.py`, then exercise the scenarios listed in
   [tools/README.md](tools/README.md). Playwright (from the sibling `agora`

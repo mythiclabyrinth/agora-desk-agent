@@ -10,6 +10,7 @@ watch the desk dial cycle the hands-free agent, or ?scenario=channels-error /
 import gzip
 import json
 import math
+import re
 import struct
 import sys
 import time
@@ -29,7 +30,7 @@ JOB = {'number': 0, 'started': 0, 'agent': 'claude'}
 VOICE = dict(keys=dict(groq=False, openai=False), stt_provider='groq', tts_provider='groq',
              stt_models=dict(groq='whisper-large-v3-turbo', openai='gpt-4o-mini-transcribe'),
              tts_models=dict(groq='canopylabs/orpheus-v1-english', openai='gpt-4o-mini-tts'),
-             tts_voices=dict(groq='autumn', openai='alloy'), accent='american', agent='claude',
+             tts_voices=dict(groq='autumn', openai='alloy'), accent='american', stt_language='en', agent='claude',
              stt_ready=False, tts_ready=False, mic=True, speaker=True, button_pin=6,
              wake_enabled=False, wake_cutoff=0.97, wake_available=True, wake_phrase='Hey Jarvis',
              listen_led_pin=18)
@@ -225,6 +226,11 @@ class Handler(BaseHTTPRequestHandler):
                 if data['agent'] not in ('claude', 'cursor', 'codex'):
                     return self.reply({'error':'Choose which agent the desk should reach hands-free.'},400)
                 VOICE['agent'] = data['agent']
+            if 'stt_language' in data:
+                lang = str(data['stt_language']).strip().lower()
+                if lang and not re.fullmatch(r'[a-z-]{2,8}', lang):
+                    return self.reply({'error':'Language must be an ISO code such as en, or empty to auto-detect.'},400)
+                VOICE['stt_language'] = lang
             VOICE.update(stt_provider=data['stt_provider'], tts_provider=data['tts_provider'], accent=data['accent'],
                          stt_models=dict(groq=data['stt_model_groq'], openai=data['stt_model_openai']),
                          tts_models=dict(groq=data['tts_model_groq'], openai=data['tts_model_openai']),

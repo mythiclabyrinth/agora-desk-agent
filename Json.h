@@ -294,6 +294,7 @@ inline bool jsonTopBool(const String &json, const char *key, bool &out) {
 struct JsonMessage {
   long long id = 0;
   bool hasId = false;
+  String channelId;
   String authorType;
   String authorId;
   String authorName;
@@ -325,11 +326,13 @@ inline bool jsonReadMessage(const String &json, int &i, JsonMessage &message) {
         message.hasId = true;
       }
       if (!jsonSkipValue(json, i)) return false;
-    } else if (key == "author_type" || key == "author_id" || key == "author_name" || key == "text") {
+    } else if (key == "author_type" || key == "author_id" || key == "author_name" || key == "text" ||
+               key == "channel_id") {
       if (i < (int)json.length() && json[i] == '"') {
         String value;
         if (!jsonParseString(json, i, value)) return false;
-        if (key == "author_type") message.authorType = value;
+        if (key == "channel_id") message.channelId = value;
+        else if (key == "author_type") message.authorType = value;
         else if (key == "author_id") message.authorId = value;
         else if (key == "author_name") message.authorName = value;
         else {
@@ -383,6 +386,36 @@ inline bool jsonEachMessage(const String &json, JsonMessageFn fn, void *ctx) {
   walk.ctx = ctx;
   jsonForEachTopField(json, jsonTakeMessages, &walk);
   return walk.saw;
+}
+
+// A frame from Agora's UI socket. Keys may come in any order (the server
+// sorts them, so "message" precedes "type").
+struct JsonEvent {
+  String type;
+  JsonMessage message;
+  bool hasMessage = false;
+};
+
+inline bool jsonTakeEvent(const String &key, const String &json, int &i, void *ctx) {
+  auto *event = static_cast<JsonEvent *>(ctx);
+  if (key == "type" && i < (int)json.length() && json[i] == '"') {
+    jsonParseString(json, i, event->type);
+  } else if (key == "message") {
+    int at = i;
+    event->hasMessage = jsonReadMessage(json, i, event->message);
+    if (!event->hasMessage) i = at;
+  }
+  return false;
+}
+
+// True for a new-message event ({"type":"message","message":{...}}); every
+// other event type, and a malformed frame, is false.
+inline bool jsonEventMessage(const String &json, JsonMessage &out) {
+  JsonEvent event;
+  if (!jsonForEachTopField(json, jsonTakeEvent, &event)) return false;
+  if (event.type != "message" || !event.hasMessage) return false;
+  out = event.message;
+  return true;
 }
 
 // One flat Agora object: an entry of the channels array, or the agent header

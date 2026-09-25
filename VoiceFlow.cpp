@@ -1,5 +1,6 @@
 #include "VoiceFlow.h"
 
+#include "AgoraSocket.h"
 #include "Audio.h"
 #include "Board.h"
 #include "ChatClient.h"
@@ -11,7 +12,6 @@
 
 namespace {
 
-constexpr unsigned long SPEAK_GRACE_MS = 1500;
 constexpr unsigned long WAKE_READY_CHECK_MS = 1000;
 
 bool idlePhase(VoicePhase phase) {
@@ -108,10 +108,10 @@ void VoiceFlow::update() {
       return;
     }
     if (chat.phase == Phase::Done) {
-      // Speaking blocks the web server, so give the page a moment to fetch
-      // the finished reply before the speaker takes over.
-      if (!_speakAt) _speakAt = millis() + SPEAK_GRACE_MS;
-      if (millis() < _speakAt) return;
+      // Only the page needs a moment to fetch the reply; wake and button speak at once.
+      bool pageWaits = _source == VoiceSource::Page || _source == VoiceSource::Typed;
+      if (pageWaits && !_speakAt) _speakAt = millis() + SPEAK_GRACE_MS;
+      if (pageWaits && static_cast<long>(millis() - _speakAt) < 0) return;
       _speakAt = 0;
       _reply = chat.reply;
       speakReply();
@@ -123,6 +123,7 @@ void VoiceFlow::update() {
 
 bool VoiceFlow::beginRecording(const String &agentKey, VoiceSource source, String &error,
                                unsigned long preRollMs) {
+  uint32_t triggeredAt = millis();
   if (busy()) {
     error = "The desk is already in a voice exchange.";
     return false;
@@ -146,7 +147,8 @@ bool VoiceFlow::beginRecording(const String &agentKey, VoiceSource source, Strin
     return false;
   }
   AgentKind kind = ConfigStore::parseAgent(agentKey);
-  if (kind == AgentKind::Unknown || !configStore.agent(kind).ready) {
+  AgentSettings agent = configStore.agent(kind);
+  if (kind == AgentKind::Unknown || !agent.ready) {
     error = "Set up that agent under Settings › Agents first.";
     return false;
   }
@@ -154,7 +156,14 @@ bool VoiceFlow::beginRecording(const String &agentKey, VoiceSource source, Strin
     error = "Not enough memory to record. Enable PSRAM in the board settings.";
     return false;
   }
+  // The agent is known: a plain ws link finishes its handshake while the user
+  // talks, off the path from end of speech to reply.
+  agoraSocket.prepare(agent);
 
+  _trace.reset();
+  _trace.trigger = triggeredAt;
+  _trace.recordStart = millis();
+  _chatJob = 0;
   _job++;
   _source = source;
   _agentKey = agentKey;
@@ -232,6 +241,8 @@ void VoiceFlow::toggleMute() {
   String error;
   if (_phase == VoicePhase::Recording) {
     audio.discardRecording();
+    releaseSocket();
+    _trace.reset();
     _cancelled = false;
     setPhase(VoicePhase::Idle);
     _recordedMs = 0;
@@ -321,7 +332,7 @@ void VoiceFlow::checkWakeEnd() {
   unsigned long silenceMs = (now.frames - now.lastLoudFrame) * MIC_BLOCK_MS;
   switch (vadVerdict(elapsedMs, speechMs, silenceMs)) {
     case VadVerdict::Done:
-      Serial.println("Voice: pause after speech, sending");
+      Serial.printf("Voice: pause after speech (%lu ms of quiet), sending\n", silenceMs);
       finishRecording();
       break;
     case VadVerdict::NoSpeech:
@@ -337,6 +348,8 @@ void VoiceFlow::checkWakeEnd() {
 // "Thank you.").
 void VoiceFlow::cancelRecording(const char *why, bool byUser) {
   audio.discardRecording();
+  releaseSocket();
+  _trace.reset();
   _cancelled = byUser;
   setPhase(VoicePhase::Idle);
   _recordedMs = 0;
@@ -366,6 +379,8 @@ bool VoiceFlow::speakWhenDone(uint32_t chatJob, const String &agentKey, String &
     error = "Add the text-to-speech provider's API key under Settings › Voice.";
     return false;
   }
+  _trace.reset();
+  _trace.trigger = millis();
   _job++;
   _source = VoiceSource::Typed;
   _chatJob = chatJob;
@@ -388,10 +403,16 @@ void VoiceFlow::onRelease() {
 
 void VoiceFlow::finishRecording() {
   if (_phase != VoicePhase::Recording) return;
+  _trace.speechEnd = millis();
   audio.pumpRecording();
-  if (_source == VoiceSource::Wake && !wakeHeardSpeech(mic.vad())) {
+  VadStats vad = mic.vad();
+  if (_source == VoiceSource::Wake && !wakeHeardSpeech(vad)) {
     cancelRecording("the VAD heard no speech");
     return;
+  }
+  if (_source == VoiceSource::Wake) {
+    _trace.finalSilenceMs = (vad.frames - vad.lastLoudFrame) * MIC_BLOCK_MS;
+    _trace.hasSilence = true;
   }
   audio.stopRecording();
   _recordedMs = audio.recordedMs();
@@ -413,7 +434,9 @@ void VoiceFlow::sendRecording() {
   VoiceSettings voice = configStore.voice();
   String text;
   String error;
+  _trace.sttStart = millis();
   bool ok = speech.transcribe(voice, audio.wav(), audio.wavSize(), "desk.wav", "audio/wav", text, error);
+  _trace.sttDone = millis();
   audio.discardRecording();
   if (!ok) {
     fail(error);
@@ -450,26 +473,59 @@ void VoiceFlow::sendRecording() {
     return;
   }
   _chatJob = chatClient.status().job;
+  // The spoken reply is the desk's signal; the page, or a desk that cannot speak, keeps the chime.
+  bool desk = _source == VoiceSource::Wake || _source == VoiceSource::Button;
+  if (desk && voice.ttsReady() && audio.ampReady()) feedback.quietNextSuccess();
   _speakAt = 0;
   setPhase(VoicePhase::Waiting);
 }
 
+void VoiceFlow::releaseSocket() {
+  // A chat job still listening owns the link; otherwise it was only prepared.
+  if (chatClient.phase() != Phase::Listening) agoraSocket.close();
+}
+
 void VoiceFlow::speakReply() {
+  // Speech blocks loop() for seconds, long enough to miss heartbeats; the
+  // job is done, so the link goes before the speaker starts.
+  releaseSocket();
   setPhase(VoicePhase::Speaking);
-  // Let the reply chime finish before the speaker starts.
+  // Any reply chime finishes before the speaker starts.
   feedback.follow(chatClient.phase());
   Serial.println("Voice: speaking reply");
   VoiceSettings voice = configStore.voice();
   String error;
   if (!voice.ttsReady()) {
     _error = "Add the text-to-speech provider's API key under Settings › Voice to hear replies.";
-  } else if (!speech.speak(voice, _reply, error)) {
-    // The text reply still stands; only the read-out failed.
-    _error = error;
-    Serial.print("Voice: speech failed: ");
-    Serial.println(error);
+  } else {
+    bool spoke = speech.speak(voice, _reply, error);
+    const SpeechTiming &t = speech.timing();
+    _trace.ttsStart = t.request;
+    _trace.ttsHeaders = t.headers;
+    _trace.ttsFirstPcm = t.firstPcm;
+    _trace.playStart = t.playStart;
+    _trace.playEnd = t.playEnd;
+    if (!spoke) {
+      // The text reply still stands; only the read-out failed.
+      _error = error;
+      Serial.print("Voice: speech failed: ");
+      Serial.println(error);
+    }
   }
+  endTrace();
   setPhase(VoicePhase::Done);
+}
+
+void VoiceFlow::endTrace() {
+  if (!_trace.trigger) return;  // no exchange began (a refused start)
+  ListenStatus chat = chatClient.status();
+  if (_chatJob && chat.job == _chatJob) {
+    _trace.postStart = chat.postStart;
+    _trace.postDone = chat.postDone;
+    _trace.replySeen = chat.replySeen;
+  }
+  _trace.print();
+  _trace.reset();
 }
 
 void VoiceFlow::setPhase(VoicePhase phase) {
@@ -480,6 +536,8 @@ void VoiceFlow::setPhase(VoicePhase phase) {
 void VoiceFlow::fail(const String &message, bool chime, bool missed) {
   _error = message;
   _missed = missed;
+  releaseSocket();
+  endTrace();
   setPhase(VoicePhase::Failed);
   Serial.print("Voice: ");
   Serial.println(message);

@@ -25,6 +25,15 @@ struct WavClip {
 };
 void wavFree(WavClip &clip);
 
+// millis() stamps of the last speak(), 0 where a step never happened.
+struct SpeechTiming {
+  uint32_t request = 0;    // first TTS request sent
+  uint32_t headers = 0;    // its response headers
+  uint32_t firstPcm = 0;   // first PCM parsed from the stream
+  uint32_t playStart = 0;  // first PCM handed to the amp
+  uint32_t playEnd = 0;    // last PCM handed to the amp
+};
+
 class Speech {
  public:
   // Transcribe an audio clip. `filename` tells the API the container
@@ -34,6 +43,7 @@ class Speech {
 
   // Speak text through the desk amplifier.
   bool speak(const VoiceSettings &settings, const String &text, String &error);
+  const SpeechTiming &timing() const { return _timing; }
 
   // Render text to a WAV in memory for the browser to play.
   bool synthesize(const VoiceSettings &settings, const String &text, WavClip &out, String &error);
@@ -46,6 +56,11 @@ class Speech {
   bool speakOnce(const String &provider, const String &key, const String &model, const String &voice,
                  const String &input, const String &instructions, const SpeechSink &sink, String &error);
   static String apiError(const char *what, const String &provider, int status, const String &body);
+
+  SpeechTiming _timing;
+  // The piece in flight; the amp sink copies these when its audio starts.
+  uint32_t _pieceRequest = 0;
+  uint32_t _pieceHeaders = 0;
 };
 
 // Split text into Orpheus-sized pieces at sentence-ish boundaries.

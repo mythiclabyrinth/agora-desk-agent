@@ -81,7 +81,11 @@ void Feedback::follow(Phase phase) {
   if (phase == _phase) return;
   Phase previous = _phase;
   _phase = phase;
-  if (phase == Phase::Listening) attention();
-  else if (previous == Phase::Listening && phase == Phase::Done) success();
+  if (phase == Phase::Listening) {
+    attention();
+    return;
+  }
+  if (previous == Phase::Listening && phase == Phase::Done && !_quietSuccess) success();
   else if (previous == Phase::Listening && phase == Phase::Failed) error();
+  _quietSuccess = false;  // it covered one job only
 }

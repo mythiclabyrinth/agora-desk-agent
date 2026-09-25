@@ -6,6 +6,7 @@
 #include "Button.h"
 #include "Config.h"
 #include "Mic.h"
+#include "VoiceTrace.h"
 
 // Hold the button and talk; let go to send. Or say the wake phrase, talk,
 // and pause (or click the button once to send now, twice to cancel). The clip is transcribed, sent through the same ChatClient the
@@ -81,6 +82,10 @@ class VoiceFlow {
   void finishRecording();
   void sendRecording();
   void speakReply();
+  // Closes Agora's socket unless a chat job is listening on it.
+  void releaseSocket();
+  // Fills in the chat's stamps and prints the exchange's latency line.
+  void endTrace();
   void setPhase(VoicePhase phase);
   // `chime` is false when the chat phase change already played the error beeps.
   void fail(const String &message, bool chime = true, bool missed = false);
@@ -98,6 +103,7 @@ class VoiceFlow {
   String _error;
   unsigned long _recordedMs = 0;
   unsigned long _speakAt = 0;
+  VoiceTrace _trace;
 
   DebouncedButton _talk;
   ClickCounter _clicks{TALK_DOUBLE_CLICK_MS};
