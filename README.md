@@ -28,15 +28,20 @@ use voice, a Groq and/or OpenAI key for speech.
   the reply is read aloud through a MAX98357A speaker (Groq Orpheus or OpenAI
   TTS). Provider, model, voice and accent are picked per direction under
   Settings › Voice.
-- **Wake word (hands-free)** — say "Hey Jarvis" (a "Hey Agora" model can be
-  trained and dropped in; see [tools/wake/README.md](tools/wake/README.md)), wait
-  for two beeps, speak, and pause. The model runs on the board (microWakeWord on
-  TensorFlow Lite Micro); an energy VAD ends the recording when you stop talking
-  and drops it if you said nothing. A **mute button** switches the wake word off
-  and on (so does Settings › Voice), and a **blue LED** is lit whenever the
-  board's mic is listening: wake word armed, or any recording in progress. The
-  wake word is deaf while the board beeps or speaks, so a reply that says the
-  phrase cannot wake it.
+- **Wake word (hands-free)** — say "Hey Jarvis", wait for two beeps, speak, and
+  pause. The model runs on the board (microWakeWord on TensorFlow Lite Micro);
+  an energy VAD ends the recording when you stop talking and drops it if you
+  said nothing. A **mute button** (or Settings › Voice) switches the wake word
+  off and on, and a **blue LED** is lit whenever the board's mic is listening.
+  The wake word is deaf while the board beeps or speaks. To train a "Hey Agora"
+  model, see [tools/wake/README.md](tools/wake/README.md).
+- **Hands-free agent and the dial** — the talk button and the wake word reach
+  one agent, set under Settings › Voice › Devices or with a KY-040 rotary dial.
+  The dial steps through the *configured* agents (clockwise = next) and, once
+  the knob rests, beeps the agent's place: one for Claude, two for Cursor, three
+  for Codex. A short press replays it. With one agent configured the dial just
+  ticks; with none it gives the error beeps. A turn mid-recording applies to the
+  next message.
 - **Voice from the browser (no extra hardware)** — the chat's mic button records
   with the browser's microphone and the speaker toggle plays replies through the
   browser. The board proxies both to the speech APIs so the keys never leave it.
@@ -51,15 +56,16 @@ ESP32-S3 dev module with 8 MB PSRAM and 16 MB flash. Pins are in `Board.h`.
 | Active buzzer | GPIO 4 → buzzer → GND |
 | Talk button | GPIO 6 → button → GND (internal pull-up) |
 | Mute button | GPIO 7 → button → GND (internal pull-up) |
-| Blue listening LED | GPIO 8 → 47–100 Ω → LED → GND |
+| Blue listening LED | GPIO 18 → 47–100 Ω → LED → GND |
+| KY-040 rotary dial | CLK 9, DT 10, SW 8, **+ → 3V3 (not 5V)**, GND → GND |
 | INMP441 microphone | SCK 12, WS 11, SD 13, L/R → GND, VDD 3V3 |
 | MAX98357A amplifier | BCLK 16, LRC 15, DIN 17, VIN 5V, 4 Ω speaker on +/− |
 
-GPIO 3 and 46 are strapping pins and stay unused; on the usable header
-(GND, 5V, 13, 12, 11, 10, 9, 46, 3, 8, 18, 17, 16, 15, 7, 6, 5, 4, RST, 3V3)
-GPIO 9, 10 and 18 are still free. A blue LED drops about 3 V, so from a 3.3 V
-pin it needs a small resistor (47–100 Ω) or it barely glows. The LEDs, buzzer,
-buttons, mic and amp are all optional; the page works without any of them.
+Power the KY-040 from 3V3: its pull-ups go to "+", and the ESP32-S3's GPIOs are
+not 5 V tolerant. If clockwise selects the previous agent, set `DIAL_REVERSE` in
+`Board.h`; if one click moves two agents or every other click is ignored, adjust
+`DIAL_STEPS_PER_DETENT`. The blue LED needs a small resistor (47–100 Ω) or it
+barely glows. All of this hardware is optional; the page works without it.
 
 ## Build and flash
 
@@ -73,8 +79,8 @@ Arduino IDE 2 with the `esp32` core 3.x. Board settings:
 Open `Esp32Agent.ino`, compile, upload. Watch the Serial Monitor at 115200 for
 the setup-network address and, once joined, the board's IP.
 
-The web page is compiled into the firmware from `web/`. If you change anything
-in `web/`, run `python3 web/build.py` first (see [Editing the page](#editing-the-page)).
+If you changed anything in `web/`, run `python3 web/build.py` first (see
+[Editing the page](#editing-the-page)).
 
 ## Setting up
 
@@ -87,7 +93,7 @@ in `web/`, run `python3 web/build.py` first (see [Editing the page](#editing-the
    **Agent ID** matches the bridge's `AGENT_ID` (the `@mention` is resolved by
    exact id or by the slug of the agent's display name).
 5. Optional — Settings › Voice: paste a Groq (`gsk_…`) or OpenAI (`sk-…`) key,
-   choose providers/models, and pick which agent the physical button talks to.
+   choose providers/models, and pick the hands-free agent under Devices.
 
 ### Browser microphone and HTTPS
 
@@ -96,15 +102,14 @@ HTTP. Playback works regardless. For the mic, either:
 
 - Chrome: add `http://esp32-agent.local` (or the IP) at
   `chrome://flags/#unsafely-treat-insecure-origin-as-secure`, relaunch; or
-- switch **Chat page audio** to the desk hardware under Settings › Voice.
+- choose **Desk device** under Settings › Voice › Devices to use the board's mic.
 
-The page detects the missing API and shows these instructions itself.
+The page detects the missing API and points to the desk option.
 
 ## Editing the page
 
-The UI source is in `web/` — `index.html`, `styles.css`, and `js/*.js` (one file
-per area: `core`, `nav`, `status`, `voice`, `chat`, `settings-*`, `main`).
-`Page.h` is **generated** from it as a gzipped `PROGMEM` array.
+The UI source is in `web/`; `Page.h` is **generated** from it as a gzipped
+`PROGMEM` array.
 
 ```bash
 python3 tools/preview.py      # live preview at http://127.0.0.1:8765 with mock APIs
@@ -112,8 +117,7 @@ python3 web/build.py          # regenerate Page.h after editing web/
 python3 web/build.py --check  # fails if Page.h is out of date
 ```
 
-Build, then compile and upload as usual — the page is part of the firmware, so
-a page change always means a reflash. Details in [tools/README.md](tools/README.md).
+A page change always means a reflash. Details in [tools/README.md](tools/README.md).
 
 ## Security notes
 
@@ -134,6 +138,10 @@ Portal.*         soft-AP, captive DNS, Wi-Fi join/scan, mDNS
 WebUi.*          HTTP routes and JSON API
 ChatClient.*     post to Agora, poll for the agent's reply
 Feedback.*       LED and buzzer patterns
+Button.*         debounced push button (talk, mute, dial switch)
+Dial.*           KY-040 rotary encoder: interrupts, detent counter, switch
+Quadrature.*     Gray-code state table that turns edges into detents
+AgentDial.*      dial clicks -> hands-free agent, beeps, deferred save
 Mic.*            I2S mic task (core 0): gain, PSRAM ring, feeds VAD + wake word
 Wake.*           wake word engine (TFLite Micro + audio frontend)
 WakeModel.h      GENERATED model bytes + manifest (tools/wake/make_model_header.py)

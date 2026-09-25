@@ -2,13 +2,13 @@
 
 #include <Arduino.h>
 
+#include "Button.h"
 #include "Config.h"
 #include "Mic.h"
 
 // Hold the button and talk; let go to send. Or say the wake phrase, talk,
-// and pause. The clip goes to Groq for text, the text goes through the same
-// ChatClient the web page uses, and the reply is read out by Groq through
-// the speaker.
+// and pause. The clip is transcribed, sent through the same ChatClient the
+// web page uses, and the reply is spoken through the desk speaker.
 enum class VoicePhase { Idle, Recording, Transcribing, Waiting, Speaking, Done, Failed };
 
 // Who started this exchange: the physical button, the page's mic button, a
@@ -26,25 +26,13 @@ struct VoiceStatus {
   unsigned long recordedMs = 0;
 };
 
-// A push button to GND with the internal pull-up, debounced by time.
-class DebouncedButton {
- public:
-  void begin(uint8_t pin);
-  // +1 on a settled press, -1 on a settled release, 0 otherwise.
-  int8_t poll();
-
- private:
-  uint8_t _pin = 0;
-  bool _pressed = false;
-  bool _raw = false;
-  unsigned long _changedAt = 0;
-};
-
 class VoiceFlow {
  public:
   void begin();
   void update();
   VoiceStatus status() const;
+  // Cheap phase check for code that runs every loop pass (status() copies strings).
+  VoicePhase phase() const { return _phase; }
   // True while the mic is open or a clip is being sent; the LED stays lit.
   bool holdingLed() const;
   bool busy() const;
@@ -59,8 +47,8 @@ class VoiceFlow {
   bool wakeListening() const;
   // The detector is armed right now (policy, not the brief deaf windows).
   bool wakeArmed() const { return _wakeArmed; }
-  // Switch wake listening on or off (unmute / mute) and save it; the page
-  // and the GPIO 7 mute button both come through here.
+  // Unmute / mute wake listening and save it; the page and the mute button
+  // both come through here.
   bool setWakeEnabled(bool on, String &error);
   void setWakeSensitivity(const String &level);
 

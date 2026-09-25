@@ -17,7 +17,7 @@ function remember(id, row) {
   storage.set('localStorage', 'desk-log-' + id, JSON.stringify(rows));
 }
 function renderCards(list) {
-  const sig = JSON.stringify(list);
+  const sig = JSON.stringify([list, targetAgent]);
   if (sig === cardsSignature) return;
   cardsSignature = sig;
   $('#home-cards').replaceChildren();
@@ -25,7 +25,13 @@ function renderCards(list) {
   list.forEach((a) => {
     const card = el('article', 'card');
     const top = el('div', 'card-top');
-    const state = el('span', 'badge' + (a.ready ? ' on' : ''), a.ready ? 'Configured' : 'Not connected');
+    const handsFree = a.ready && a.id === targetAgent;
+    const state = el(
+      'span',
+      'badge' + (a.ready ? ' on' : ''),
+      a.ready ? (handsFree ? 'Configured · hands-free' : 'Configured') : 'Not connected',
+    );
+    if (handsFree) state.title = 'The talk button, the wake word and the dial reach this agent.';
     if (a.ready) state.prepend(el('span', 'dot on'));
     top.append(agentIcon(a.id), state);
     const action = button(
@@ -51,6 +57,7 @@ function renderCards(list) {
 async function refreshStatus() {
   if (statusBusy) return;
   statusBusy = true;
+  const asked = Date.now();
   try {
     const s = await api('/api/status');
     online = !!s.wifi;
@@ -58,6 +65,7 @@ async function refreshStatus() {
     const v = s.voice || {};
     trackVoice(v);
     if (v.wake) trackWake(v.wake);
+    trackTargetAgent(v.target_agent, asked);
     boardBusy = !!s.listening || voiceBusy;
     $('#link').textContent = online ? 'Desk online' : 'Wi-Fi not connected';
     $('#link-dot').classList.toggle('on', online);
@@ -127,6 +135,17 @@ function trackWake(w) {
   m.firstChild.style.width = pct + '%';
   m.setAttribute('aria-valuenow', String(pct));
   m.classList.toggle('idle', !w.armed);
+}
+// The hands-free agent can change on the desk (the dial) or in another browser. Keep Settings › Voice › Devices in
+// step, but never under someone who is choosing there or whose own choice is still saving.
+function trackTargetAgent(id, asked) {
+  if (!id || asked < targetAgentAsOf) return;
+  const changed = !!targetAgent && id !== targetAgent;
+  targetAgent = id;
+  const sel = $('#voice-agent');
+  if (!sel || sel === document.activeElement || sel.dataset.pending || sel.value === id) return;
+  sel.value = id;
+  if (changed) note($('#voice-agent-note'), 'Hands-free agent changed to ' + agentLabel(id) + '.');
 }
 function voiceBanner(v) {
   return (

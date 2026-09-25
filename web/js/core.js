@@ -44,6 +44,9 @@ let voiceBusy = false,
   wakeState = {};
 const drafts = {};
 let statusAgents = [];
+// The hands-free agent from /api/status; statuses requested before the page's own save of it are ignored.
+let targetAgent = '',
+  targetAgentAsOf = 0;
 function el(tag, className, text) {
   const n = document.createElement(tag);
   if (className) n.className = className;

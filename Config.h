@@ -33,7 +33,9 @@ struct VoiceSettings {
   String voiceGroq;
   String voiceOpenai;
   String accent;    // american | british | arabic
-  String agentKey;  // which agent the talk button reaches: claude, cursor, codex
+  // The hands-free agent (claude, cursor, codex): what the talk button, the
+  // wake word and the dial reach. From ConfigStore::voiceAgent().
+  String agentKey;
 
   bool sttReady() const;
   bool ttsReady() const;
@@ -49,8 +51,8 @@ struct VoiceSettings {
 bool voiceProviderKnown(const String &provider);
 bool voiceAccentKnown(const String &accent);
 
-// Wake-word listening. The persisted flag is the single source of truth: the
-// GPIO 7 button and the page both flip it here, and the blue LED follows it.
+// Wake-word listening. `enabled` is the single source of truth: the mute
+// button and the page both flip it, and the blue LED follows it.
 struct WakeSettings {
   bool enabled = false;
   String sensitivity = "medium";  // low | medium | high
@@ -70,8 +72,17 @@ class ConfigStore {
   bool saveAgent(AgentKind kind, const AgentSettings &incoming, bool keepToken);
 
   VoiceSettings voice();
+  // Also saves the hands-free agent (through saveVoiceAgent).
   void saveVoiceFeatures(const VoiceSettings &incoming);
   bool saveVoiceKey(const String &provider, const String &key);  // empty key clears
+
+  // The hands-free agent, cached so the dial can change it per click and the
+  // page and dial share one value; flash is written only by saveVoiceAgent.
+  const String &voiceAgent() const { return _voiceAgent; }
+  // RAM only, effective at once. False for an unknown key.
+  bool setVoiceAgent(const String &key);
+  // RAM and NVS; the NVS write is skipped when flash already holds `key`.
+  bool saveVoiceAgent(const String &key);
 
   // Cached in RAM: loop() asks every pass, and NVS reads are not free.
   const WakeSettings &wake() const { return _wake; }
@@ -86,6 +97,8 @@ class ConfigStore {
 
   Preferences _prefs;
   WakeSettings _wake;
+  String _voiceAgent;       // what the desk uses now
+  String _voiceAgentSaved;  // what NVS holds ("" if never saved)
 };
 
 extern ConfigStore configStore;

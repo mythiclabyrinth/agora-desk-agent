@@ -7,7 +7,7 @@
 // A wake recording starts at the detection, but the tail of the phrase (or all
 // of it, if the user repeats it) often makes it into the transcript:
 // "Hey Jarvis, what's on my list?" -> "what's on my list?". Pure C so it can
-// be host-tested; the caller takes text.substring(wakePhraseEnd(...)).
+// be host-tested.
 
 namespace wake_text {
 
@@ -46,8 +46,7 @@ inline size_t wordEnd(const char *text, size_t at) {
 
 // Index where the message starts once a leading wake phrase is removed, or 0
 // if the text does not start with one. `name` is the model's wake name in
-// lowercase ("jarvis"); "agora" and "jarvis" are always accepted too, so the
-// switch to a Hey Agora model changes nothing here.
+// lowercase ("jarvis"); "agora" and "jarvis" are always accepted too.
 inline size_t wakePhraseEnd(const char *text, const char *name) {
   using namespace wake_text;
   static const char *const greetings[] = {"hey", "hi", "hay", "hei", "a", "okay", "ok", nullptr};

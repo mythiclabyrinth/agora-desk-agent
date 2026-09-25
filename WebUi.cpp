@@ -179,6 +179,10 @@ void WebUi::handleStatus() {
   body += String(voice.job);
   body += ",\"agent\":\"";
   body += jsonEscape(voice.agentKey);
+  // "agent" is this exchange's; target_agent is the hands-free setting the
+  // next one will use, which the dial can change at any time.
+  body += "\",\"target_agent\":\"";
+  body += jsonEscape(voiceSettings.agentKey);
   body += "\",\"recorded_ms\":";
   body += String(voice.recordedMs);
   body += ",\"stt_ready\":";
@@ -490,8 +494,10 @@ void WebUi::handleVoiceWake() {
   sendJson(200, response);
 }
 
-// Features: providers, models, voices, accent, and the button's agent. Keys
-// are a separate call so this form never carries a secret.
+// Features: providers, models, voices, accent, and the hands-free agent. Keys
+// are a separate call so this form never carries a secret. Every field is
+// optional; the page sends "agent" only when the user picked one, so saving
+// an accent never undoes a turn of the dial.
 void WebUi::handleVoicePost() {
   if (voiceFlow.busy()) {
     sendError(409, "Wait for the current voice message to finish.");
@@ -534,7 +540,7 @@ void WebUi::handleVoicePost() {
     return;
   }
   if (ConfigStore::parseAgent(in.agentKey) == AgentKind::Unknown) {
-    sendError(400, "Choose which agent the talk button should reach.");
+    sendError(400, "Choose which agent the desk should reach hands-free.");
     return;
   }
   String wakeLevel;

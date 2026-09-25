@@ -1,5 +1,5 @@
 // Settings > Voice, in three tabs: credentials; speech (speech-to-text, text-to-speech); devices (mic and
-// speaker status, chat page audio, wake word and mute, talk button).
+// speaker status, chat page audio, wake word and mute, the hands-free agent).
 // Voice catalog, copied from Agora's config.rs so the two pickers offer the same choices.
 const VOICE_CATALOG = {
   providers: [
@@ -147,7 +147,7 @@ async function renderVoice() {
     panes[id].tabIndex = 0;
     tabs.append(tab);
   });
-  // Credentials — write-only keys, one row per provider, like Agora's API keys card.
+  // Credentials: write-only keys, one row per provider.
   const creds = panel(
     'Connect a speech provider',
     'Add an API key for the provider you want to use. One key can power both listening and spoken replies.',
@@ -287,11 +287,16 @@ async function renderVoice() {
     });
   };
   readiness.append(meta);
+  // One setting for everything on the desk that talks without the page; the dial changes it too, and
+  // trackTargetAgent (status.js) keeps this picker in step.
   const talk = panel(
-    'Desk talk button',
-    'Hold to speak, release to send. Replies play through your desk speaker.',
+    'Hands-free agent',
+    'The talk button, ' +
+      (v.wake_phrase ? '“' + v.wake_phrase + '”' : 'the wake word') +
+      ' and the dial send to this agent. The mic in Conversations uses whichever agent is open there.',
   );
   const talkNote = el('p', 'note');
+  talkNote.id = 'voice-agent-note';
   talkNote.setAttribute('role', 'status');
   const agentSel = selectField(
     'Send to',
@@ -300,8 +305,8 @@ async function renderVoice() {
       (a.name || a.title || a.id) + (a.ready === false ? ' · setup needed' : ''),
     ]),
     v.agent,
-    'The chat page’s mic uses whichever agent is open there.',
   );
+  agentSel.select.id = 'voice-agent';
   talk.append(agentSel.wrap, talkNote);
   const wake = wakePanel(v);
   const fill = (sel, options, value) => {
@@ -365,25 +370,33 @@ async function renderVoice() {
         ' key under Credentials before the mic can be used.';
     sttHint.classList.toggle('bad', !v.keys[p]);
   };
-  let saveTimer = 0;
-  // The talk button's agent lives on the Devices tab, so its save status shows there, not on Speech.
+  let saveTimer = 0,
+    agentPicks = 0;
+  // `agent` is sent only when picked here, so saving an accent never undoes a dial turn the page hasn't seen.
   const saveFeatures = (target = featureNote) => {
     clearTimeout(saveTimer);
     saveTimer = setTimeout(async () => {
       note(target, 'Saving…');
+      // The pick this request carries (a counter), so a newer pick made mid-request stays pending.
+      const pickedAgent = agentSel.select.dataset.pending || '';
+      const body = {
+        stt_provider: sttProvider.select.value,
+        tts_provider: ttsProvider.select.value,
+        stt_model_groq: v.stt_models.groq,
+        stt_model_openai: v.stt_models.openai,
+        tts_model_groq: v.tts_models.groq,
+        tts_model_openai: v.tts_models.openai,
+        voice_groq: v.tts_voices.groq,
+        voice_openai: v.tts_voices.openai,
+        accent: accent.select.value,
+      };
+      if (pickedAgent) body.agent = agentSel.select.value;
       try {
-        const data = await api('/api/voice', {
-          stt_provider: sttProvider.select.value,
-          tts_provider: ttsProvider.select.value,
-          stt_model_groq: v.stt_models.groq,
-          stt_model_openai: v.stt_models.openai,
-          tts_model_groq: v.tts_models.groq,
-          tts_model_openai: v.tts_models.openai,
-          voice_groq: v.tts_voices.groq,
-          voice_openai: v.tts_voices.openai,
-          accent: accent.select.value,
-          agent: agentSel.select.value,
-        });
+        const data = await api('/api/voice', body);
+        if (pickedAgent) {
+          targetAgent = body.agent;
+          targetAgentAsOf = Date.now();
+        }
         note(
           target,
           'Voice settings saved.' +
@@ -393,6 +406,10 @@ async function renderVoice() {
         refreshStatus();
       } catch (err) {
         note(target, err.message, true);
+      } finally {
+        // Unsaved or not, the board's value is the truth again from the next status on.
+        if (pickedAgent && agentSel.select.dataset.pending === pickedAgent)
+          delete agentSel.select.dataset.pending;
       }
     }, 250);
   };
@@ -425,7 +442,10 @@ async function renderVoice() {
     syncTts();
     saveFeatures();
   });
-  agentSel.select.addEventListener('change', () => saveFeatures(talkNote));
+  agentSel.select.addEventListener('change', () => {
+    agentSel.select.dataset.pending = String(++agentPicks);
+    saveFeatures(talkNote);
+  });
   // Per-browser choice, so a phone can use its own mic while the desk's hardware stays for the button.
   const page = panel(
     'Microphone & speaker',

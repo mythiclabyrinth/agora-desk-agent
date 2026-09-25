@@ -11,7 +11,6 @@
 
 namespace {
 
-constexpr unsigned long DEBOUNCE_MS = 40;
 constexpr unsigned long SPEAK_GRACE_MS = 1500;
 constexpr unsigned long WAKE_READY_CHECK_MS = 1000;
 
@@ -42,27 +41,6 @@ const char *voiceSourceName(VoiceSource source) {
     case VoiceSource::Wake: return "wake";
     default: return "button";
   }
-}
-
-void DebouncedButton::begin(uint8_t pin) {
-  _pin = pin;
-  pinMode(pin, INPUT_PULLUP);
-  _raw = digitalRead(pin) == LOW;
-  _pressed = _raw;
-  _changedAt = millis();
-}
-
-int8_t DebouncedButton::poll() {
-  bool raw = digitalRead(_pin) == LOW;
-  unsigned long now = millis();
-  if (raw != _raw) {
-    _raw = raw;
-    _changedAt = now;
-    return 0;
-  }
-  if (raw == _pressed || now - _changedAt < DEBOUNCE_MS) return 0;
-  _pressed = raw;
-  return _pressed ? 1 : -1;
 }
 
 void VoiceFlow::begin() {
@@ -266,7 +244,6 @@ void VoiceFlow::onMuteButton() {
   feedback.muteToggled(!unmute);
 }
 
-// Keys, agent and Wi-Fi: cheap enough once a second, not every loop pass.
 bool VoiceFlow::wakeReady() {
   unsigned long now = millis();
   if (_wakeCheckedAt && now - _wakeCheckedAt < WAKE_READY_CHECK_MS) return _wakeReady;
@@ -278,18 +255,15 @@ bool VoiceFlow::wakeReady() {
   return _wakeReady;
 }
 
-// Arm the detector only when a wake would be welcome right now. The speaker
-// and buzzer deafen it on their own (WakeWord::holdOff), so a reply that says
-// the phrase cannot wake the board.
+// Arm the detector only when a wake would be welcome right now. Sounds the
+// board makes deafen it separately (WakeWord::holdOff).
 void VoiceFlow::updateWake() {
   bool arm = wakeListening() && idlePhase(_phase) && chatClient.phase() != Phase::Listening && !audio.playing() &&
              wakeReady();
   _wakeArmed = arm;
   wakeWord.setArmed(arm);
-  // The blue LED means "the mic is listening": armed for the wake word, or
-  // recording for any reason (a talk-button clip lights it even when muted).
-  // It follows the arming policy, not the short deaf windows after a beep,
-  // so it does not flicker.
+  // The blue LED follows the arming policy, not the brief deaf windows after
+  // a beep, so it does not flicker. Any recording lights it, even when muted.
   feedback.listenLed(arm || _phase == VoicePhase::Recording);
 
   uint32_t samplePos = 0;
