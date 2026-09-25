@@ -17,8 +17,8 @@ struct VadStats {
 // The INMP441 on I2S port 0, read by one FreeRTOS task on core 0 and nowhere
 // else. Every 10 ms block is amplified, handed to the wake-word detector and
 // the VAD, and written into a ring buffer in PSRAM. Recordings (Audio) copy
-// out of the ring from loop(), so a pre-roll is always there and a slow loop
-// iteration no longer drops samples.
+// out of the ring from loop(), so a pre-roll is always available and a slow
+// loop iteration loses nothing.
 //
 // The ring is single-producer/single-consumer: the task writes samples, then
 // publishes the running sample count with release ordering; readers load it

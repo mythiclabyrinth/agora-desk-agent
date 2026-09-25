@@ -36,7 +36,6 @@ void AgentDial::update() {
   int steps = dial.takeSteps();
   if (steps) turn(steps, now);
 
-  // Only a short press replays the cue; a long hold is left for later use.
   int8_t press = dial.pollPress();
   if (press > 0) {
     _pressedAt = now ? now : 1;
@@ -48,8 +47,8 @@ void AgentDial::update() {
     _pressedAt = 0;
   }
 
-  // The recording already holds its agent; beeps would land in the clip and
-  // an NVS write stalls both cores, so both wait for it to end.
+  // The open recording already has its agent; a beep would land in the clip
+  // and an NVS write stalls both cores, so both wait for it to end.
   if (voiceFlow.phase() == VoicePhase::Recording) return;
   if (_cue != Cue::None && due(now, _cueAt)) playCue();
   if (_unsaved && due(now, _saveAt)) {

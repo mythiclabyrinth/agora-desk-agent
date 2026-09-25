@@ -2,24 +2,21 @@
 
 Run `python3 tools/preview.py`, then open http://127.0.0.1:8765/.
 It assembles the page from `web/` on every request (so edits show on reload)
-and serves it gzipped, exactly as the board does. The demo APIs are isolated:
-nothing is forwarded to a board, and demo saves last only until the process stops.
+and serves it gzipped, as the board does. The demo APIs are isolated: nothing is
+forwarded to a board, and demo saves last only until the process stops.
 
 - `/?scenario=offline`: board reachable, Wi-Fi disconnected.
 - `/?scenario=empty`: no configured agents.
 - `/?scenario=scan-empty#settings`: Wi-Fi scan returns no networks.
 - `/?scenario=scan-error#settings`: Wi-Fi scan fails; manual entry remains available.
 - `/?scenario=voice`: watch a talk-button conversation land in the chat.
-- `/?scenario=wake`: wake listening switches on, the score meter climbs, “Hey Jarvis” is
-  heard, the VAD ends the clip, and the exchange lands in the chat with the “Heard …” banner.
-  Settings › Voice › Devices shows the Wake word section (toggle = the desk's mute
-  button, sensitivity, live score) alongside the status checks, chat page audio and the
-  hands-free agent. Speech & voice holds only speech-to-text and text-to-speech.
-- `/?scenario=dial`: Cursor counts as configured too, and the desk dial moves the hands-free
-  agent (`voice.target_agent` in `/api/status`) between Claude and Cursor every three seconds.
-  Settings › Voice › Devices › Hands-free agent follows it (unless the picker has focus), and
-  the Overview marks that agent's card “hands-free”. Codex stays “setup needed”, as the dial
-  only cycles configured agents.
+- `/?scenario=wake`: wake listening switches on, the score meter (Settings › Voice ›
+  Devices) climbs, “Hey Jarvis” is heard, the VAD ends the clip, and the exchange lands in
+  the chat with the “Heard …” banner.
+- `/?scenario=dial`: Cursor counts as configured too, and the dial moves the hands-free
+  agent (`voice.target_agent`) between Claude and Cursor every three seconds. The
+  Hands-free agent picker follows it (unless it has focus), and so does the Overview's
+  “hands-free” badge.
 - Wi-Fi scanning and joining use demo data only.
 - Send a message containing `preview-error` to simulate a failed send.
 - Other messages receive an explicitly labeled demo response after four seconds.
@@ -56,9 +53,7 @@ python3 web/build.py          # inlines CSS + JS, gzips, writes Page.h
 python3 web/build.py --check  # fails if Page.h is stale (preview also warns)
 ```
 
-Then compile and upload `Esp32Agent.ino` with your board's usual ESP32-S3 settings.
-The firmware serves the gzipped bytes with `Content-Encoding: gzip`; every browser
-inflates them transparently.
+Then compile and upload `Esp32Agent.ino`.
 
 ## Wake word model
 

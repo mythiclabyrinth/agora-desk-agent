@@ -16,8 +16,7 @@ constexpr AgentDefaults kAgents[] = {
     {"codex", "Codex", "Codex", "codex-cli"},
 };
 
-// Defaults mirror Agora's config.rs. Groq is the default provider here because
-// that is the key this desk was built around; OpenAI is a switch away.
+// Model and voice defaults mirror Agora's config.rs; Groq is the default provider.
 constexpr char DEFAULT_GROQ_STT[] = "whisper-large-v3-turbo";
 constexpr char DEFAULT_OPENAI_STT[] = "gpt-4o-mini-transcribe";
 constexpr char DEFAULT_GROQ_TTS[] = "canopylabs/orpheus-v1-english";

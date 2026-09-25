@@ -4,10 +4,9 @@
     python3 web/build.py          # writes ../Page.h (gzip, PROGMEM)
     python3 web/build.py --check  # exit 1 if Page.h is stale
 
-index.html references styles.css and js/*.js the way a normal site would;
-here they are inlined in order so the board serves one self-contained
-document. tools/preview.py calls assemble() so the preview is the same
-bytes the firmware ships, just not compressed.
+index.html references styles.css and js/*.js; they are inlined in order so
+the board serves one self-contained document. tools/preview.py serves the
+same assemble() output.
 """
 from __future__ import annotations
 
@@ -37,8 +36,7 @@ def assemble() -> str:
     html = (WEB / 'index.html').read_text(encoding='utf-8')
     html = STYLE_TAG.sub(lambda m: '<style>' + (WEB / m.group(1)).read_text(encoding='utf-8') + '</style>', html)
 
-    # Consecutive script tags collapse into one block so the board serves a
-    # single script, exactly as the page did before it was split up.
+    # All scripts collapse into one block, in order, sharing one global scope.
     scripts = SCRIPT_TAG.findall(html)
     if scripts:
         body = ''.join((WEB / s).read_text(encoding='utf-8') for s in scripts)

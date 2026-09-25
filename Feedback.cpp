@@ -25,8 +25,7 @@ void Feedback::allOff() {
 }
 
 void Feedback::beep(int duration) {
-  // The mic is an arm's length from the buzzer; keep the wake word deaf
-  // through the beep and its echo.
+  // Keep the wake word deaf through the beep and its echo.
   wakeWord.holdOff(duration + WAKE_QUIET_AFTER_SOUND_MS);
   digitalWrite(BUZZER_PIN, HIGH);
   delay(duration);
@@ -34,14 +33,14 @@ void Feedback::beep(int duration) {
 }
 
 void Feedback::attention() {
-  // One short chirp when the message goes out. The green LED blinks after this.
+  // One short chirp when the message goes out.
   digitalWrite(LED_PIN, LOW);
   digitalWrite(BUZZER_PIN, LOW);
   beep(90);
 }
 
 void Feedback::success() {
-  // Two notes, the second longer: the reply arrived. Not the send chirp.
+  // Two notes, the second longer: the reply arrived.
   digitalWrite(LED_PIN, LOW);
   beep(60);
   delay(90);

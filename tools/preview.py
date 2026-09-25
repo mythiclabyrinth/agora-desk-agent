@@ -31,7 +31,7 @@ VOICE = dict(keys=dict(groq=False, openai=False), stt_provider='groq', tts_provi
              tts_voices=dict(groq='autumn', openai='alloy'), accent='american', agent='claude',
              stt_ready=False, tts_ready=False, mic=True, speaker=True, button_pin=6,
              wake_enabled=False, wake_sensitivity='medium', wake_available=True, wake_phrase='Hey Jarvis',
-             wake_button_pin=7, listen_led_pin=8)
+             wake_button_pin=7, listen_led_pin=18)
 # ?scenario=voice walks the button flow: recording -> transcribing -> waiting -> speaking -> done.
 # The chat mic button drives the same steps from /api/voice/talk.
 VOICE_STEPS = [(0, 'recording'), (3, 'transcribing'), (5, 'waiting'), (9, 'speaking'), (13, 'done')]

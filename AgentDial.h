@@ -27,12 +27,9 @@ inline int dialPick(const bool ready[DIAL_AGENT_COUNT], int current, int steps) 
   return at;
 }
 
-// Turns dial clicks into the desk's hands-free agent (the one the talk
-// button and the wake word reach; Settings › Voice › Devices shows the same
-// setting). The choice applies in RAM at once; the "which agent" beeps wait
-// until the knob rests, and the flash write waits longer. Nothing beeps or
-// writes while a recording is open: a beep would land in the clip, and the
-// clip already has its agent, so the new one is for the next message.
+// Turns dial clicks into the hands-free agent. The choice applies in RAM at
+// once; the "which agent" beeps wait until the knob rests, and the flash
+// write waits longer. Neither happens while a recording is open.
 class AgentDial {
  public:
   void begin();

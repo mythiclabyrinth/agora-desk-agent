@@ -105,8 +105,7 @@ bool Audio::startPlayback(uint32_t sampleRate, uint16_t channels, uint16_t bitsP
 
 size_t Audio::play(const uint8_t *pcm, size_t len) {
   if (!_playing || !len) return 0;
-  // The mic hears the speaker; keep the wake word deaf through the reply and
-  // a moment after it (no echo cancellation on this board).
+  // The mic hears the speaker: keep the wake word deaf through this audio.
   wakeWord.holdOff(WAKE_QUIET_AFTER_SOUND_MS + len * 1000UL / (_playRate * _playChannels * 2));
   return _amp.write(pcm, len);
 }

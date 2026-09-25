@@ -1042,7 +1042,8 @@ select {
   color: inherit;
   appearance: none;
   -webkit-appearance: none;
-  background-image: linear-gradient(45deg, transparent 50%, #839078 50%),
+  background-image:
+    linear-gradient(45deg, transparent 50%, #839078 50%),
     linear-gradient(135deg, #839078 50%, transparent 50%);
   background-position:
     calc(100% - 18px) 50%,
@@ -1978,7 +1979,7 @@ body:has(#wifi-dialog[open]) {
     flex: 1;
   }
 }
-/* Clearer voice hierarchy and comfortable controls across screen sizes. */
+/* Voice settings. */
 .advanced-setting summary {
   cursor: pointer;
   font-size: 12px;

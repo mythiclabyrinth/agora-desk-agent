@@ -6,12 +6,9 @@ Working guide for AI agents and contributors in this repo. For what the device
 ## What this is
 
 An Arduino sketch for an ESP32-S3 (N16R8) that acts as a thin desk client for
-the Agora CLI bridges (Claude, Cursor, Codex). It hosts a web page, posts
-`@mention` messages into an Agora channel over its REST API, polls for the
-agent's reply, and gives LED/buzzer feedback. Optional voice: a push-to-talk
-button (or an on-device wake word) with an INMP441 mic and MAX98357A speaker,
-transcribed and spoken via Groq or OpenAI; the browser can also use its own
-mic/speaker with the board proxying the speech APIs.
+the Agora CLI bridges (Claude, Cursor, Codex): it hosts a web page, posts
+`@mention` messages into an Agora channel, and polls for the agent's reply.
+Voice (talk button, wake word, browser mic) goes through Groq or OpenAI.
 
 Two languages, one build:
 
@@ -37,18 +34,13 @@ python3 tools/wake/make_model_header.py [model.tflite]
 python3 tools/wake/make_model_header.py --check
 ```
 
-There is no board-side test harness. Verify firmware changes by compiling and,
-where possible, by a quick host-side check of pure logic (see
-"Testing" below). Verify page changes in the preview; Playwright (from the
-sibling `agora` repo's `node_modules`) works against the preview with
-`--use-fake-device-for-media-stream` for the mic flow.
+There is no board-side test harness; see [Testing](#testing).
 
 ## The page/firmware contract
 
 **`Page.h` is generated. Never edit it by hand.** Edit `web/` and run
 `python3 web/build.py`. Commit the regenerated `Page.h` together with the `web/`
-change so a fresh clone compiles without Python. The preview prints a warning
-when `Page.h` is stale.
+change so a fresh clone compiles without Python.
 
 The page talks to the firmware only through the JSON API in `WebUi.cpp`:
 
@@ -115,24 +107,22 @@ Adding a field: add it to the firmware handler, the page, **and**
   name, matching Agora. `ChatClient::sameAgent` picks the reply the same way;
   if a user's replies aren't caught, the id is wrong, not the polling.
 - **Browser microphone needs a secure origin.** Over plain HTTP `getUserMedia`
-  is absent; the page explains the Chrome flag. Don't "fix" this in JS — it's a
-  browser rule. HTTPS on the board would mean replacing `WebServer` with
+  is absent and the page offers the desk mic instead. Don't "fix" this in JS —
+  it's a browser rule. HTTPS on the board would mean replacing `WebServer` with
   `esp_https_server`.
-- **Strapping pins** GPIO 3 and 46 stay unused. I2S port 0 is the mic, port 1
-  the amp. Pins: LED 5, buzzer 4, talk button 6, mute button 7, blue listening
-  LED 8, KY-040 dial CLK 9 / DT 10 / SW 18 (module powered from 3V3, never
-  5V). The usable header is now fully used; new hardware needs another pin plan.
+- **Pins**: the usable header is fully used (GPIO 3 and 46 are strapping pins
+  and stay free), so new hardware needs a new pin plan. I2S port 0 is the mic,
+  port 1 the amp. The KY-040 is powered from 3V3, never 5V.
 - **The dial ISR is IRAM-only.** `Dial::onEdge` and `QuadratureDecoder::step`
   are `IRAM_ATTR`, the table is `DRAM_ATTR`, pins are read with `gpio_ll`, and
   the counter sits behind a `portMUX`. Keep it that way: no `Serial`,
   `digitalRead`, allocation or flash-resident code in there. Bounce is rejected
   by the state table, not by delays.
-- **The hands-free agent is cached** (`ConfigStore::voiceAgent()`), because the
-  dial changes it per click (`setVoiceAgent`, RAM) and writes flash only after
-  `DIAL_SAVE_REST_MS` of rest (`saveVoiceAgent`). `voice().agentKey` reads the
-  cache, and `saveVoiceFeatures` goes through `saveVoiceAgent`, so the page and
-  the dial share one value. `AgentDial` holds its beeps and the NVS write while
-  a recording is open.
+- **The hands-free agent is cached** (`ConfigStore::voiceAgent()`): the dial
+  sets it per click in RAM (`setVoiceAgent`) and saves after
+  `DIAL_SAVE_REST_MS` of rest (`saveVoiceAgent`). `voice().agentKey` and
+  `saveVoiceFeatures` go through the same cache, so page and dial share one
+  value. `AgentDial` defers beeps and the NVS write while a recording is open.
 - **The mic has one reader.** `Mic` runs a FreeRTOS task on core 0 that owns
   I2S0; it feeds `wakeWord`, the VAD and a PSRAM ring. `Audio` recordings copy
   from the ring in `loop()` (with a 300 ms pre-roll). Never call `readBytes` on
@@ -161,8 +151,10 @@ Adding a field: add it to the firmware handler, the page, **and**
   test with a tiny `String`/`millis` shim compiles under clang in seconds; keep
   such files out of the repo or under a `tests/` folder if they become permanent.
 - Page: `python3 tools/preview.py`, then exercise the scenarios listed in
-  [tools/README.md](tools/README.md). After `web/build.py`, confirm
-  `python3 web/build.py --check` passes and the sketch still compiles.
+  [tools/README.md](tools/README.md). Playwright (from the sibling `agora`
+  repo's `node_modules`) works against the preview with
+  `--use-fake-device-for-media-stream` for the mic flow. After `web/build.py`,
+  confirm `python3 web/build.py --check` passes and the sketch still compiles.
 
 ## Git conventions
 

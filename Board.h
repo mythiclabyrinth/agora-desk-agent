@@ -4,58 +4,39 @@
 
 // ESP32-S3 header on this board, top to bottom beside the USB socket:
 // GND, 5V, 13, 12, 11, 10, 9, 46, 3, 8, 18, 17, 16, 15, 7, 6, 5, 4, RST, 3V3.
-// LED is GPIO 5, buzzer is GPIO 4 — the two pins just above RST.
-// GPIO 3 and GPIO 46 are strapping pins, so they stay unused.
+// Every usable pin is taken; 3 and 46 are strapping pins and stay free.
+// Off this header, 35-37 belong to the octal PSRAM, 26-32 to flash, 19/20 to USB.
+// Buttons (talk, mute, knob switch) go to GND and use the internal pull-up.
 constexpr uint8_t LED_PIN = 5;
-// Debounce for the push buttons (talk, mute, the knob's switch).
 constexpr unsigned long BUTTON_DEBOUNCE_MS = 40;
 constexpr uint8_t BUZZER_PIN = 4;
 
-// Push-to-talk button between GPIO 6 and GND (internal pull-up).
 constexpr uint8_t TALK_BUTTON_PIN = 6;
-
-// Mute button between GPIO 7 and GND (internal pull-up). Each press toggles
-// mute; muted means wake-word listening is off (the talk button still works).
+// Toggles mute: wake-word listening off (the talk button still works).
 constexpr uint8_t MUTE_BUTTON_PIN = 7;
-// Blue "listening" LED: GPIO 8 -> resistor -> LED -> GND. Lit whenever the
-// board's mic is listening: wake word armed (not muted), or any recording.
-// A blue LED drops about 2.8-3.2 V, which leaves only a few hundred mV
-// across the resistor from a 3.3 V pin: use roughly 47-100 ohm, not the usual
-// 220-330, or it will barely glow.
-constexpr uint8_t LISTEN_LED_PIN = 8;
+// Blue LED, lit while the mic listens (wake word armed, or recording). It
+// drops ~3 V, so from a 3.3 V pin it needs 47-100 ohm, not 220-330.
+constexpr uint8_t LISTEN_LED_PIN = 18;
 
-// KY-040 rotary encoder: turning it picks the hands-free agent (the one the
-// talk button and the wake word reach); a short press on the knob replays
-// which one is selected. Power the module from 3V3, NOT 5V: its on-board
-// 10k pull-ups go to "+", and the S3's GPIOs are not 5 V tolerant.
-// CLK/DT/SW also get the internal pull-ups, because most KY-040 boards leave
-// the SW pull-up unpopulated and an unwired knob must read as idle.
+// KY-040 rotary encoder: picks the hands-free agent. Power it from 3V3, not
+// 5V: its 10k pull-ups go to "+", and the S3's GPIOs are not 5 V tolerant.
+// The internal pull-ups are on too, as many boards leave SW's unpopulated.
 constexpr uint8_t ENCODER_CLK_PIN = 9;
 constexpr uint8_t ENCODER_DT_PIN = 10;
-constexpr uint8_t ENCODER_SW_PIN = 18;
-// Most KY-040s click once per full quadrature cycle (what the decoder counts).
-// Set 2 for a unit that needs two cycles per click.
+constexpr uint8_t ENCODER_SW_PIN = 8;
+// Quadrature cycles per click; 2 for a unit that needs two.
 constexpr int DIAL_STEPS_PER_DETENT = 1;
-// Set true if clockwise selects the previous agent instead of the next: the
-// CLK/DT labels are not consistent across KY-040 makers.
+// CLK/DT labels vary between makers; set if clockwise selects the previous agent.
 constexpr bool DIAL_REVERSE = false;
-// A spin applies at once, but the "which agent" beeps wait for the knob to
-// rest this long (so a fast spin beeps once, for where it stopped)...
+// The "which agent" beeps wait for the knob to rest (a fast spin beeps once)...
 constexpr unsigned long DIAL_BEEP_REST_MS = 350;
-// ...and the choice is written to flash only after this long at rest, so a
-// fidgety hand does not wear the NVS sector.
+// ...and the flash write waits longer, so fidgeting does not wear NVS.
 constexpr unsigned long DIAL_SAVE_REST_MS = 1500;
-// Position cue: one beep per place in the fixed order (claude 1, cursor 2,
-// codex 3). Long enough to count, short enough not to stall loop() long.
+// One beep per place (claude 1, cursor 2, codex 3); loop() blocks meanwhile.
 constexpr unsigned long DIAL_CUE_BEEP_MS = 60;
 constexpr unsigned long DIAL_CUE_GAP_MS = 140;
-// A knob press shorter than this replays the cue; longer holds do nothing,
-// which leaves room for a future long-press action.
+// A shorter knob press replays the cue; longer holds are reserved.
 constexpr unsigned long DIAL_SHORT_PRESS_MS = 800;
-// With the encoder on 9, 10 and 18, this breadboard's usable header (GND, 5V,
-// 13, 12, 11, 10, 9, 46, 3, 8, 18, 17, 16, 15, 7, 6, 5, 4, RST, 3V3) is fully
-// used; 3 and 46 are strapping pins and stay free. Elsewhere, 35-37 belong to
-// the octal PSRAM, 26-32 to flash, 19/20 to USB.
 
 // INMP441 microphone on I2S port 0. VDD 3V3, GND, L/R to GND (left slot).
 constexpr int8_t MIC_BCLK_PIN = 12;   // SCK
@@ -75,17 +56,13 @@ constexpr unsigned long RECORD_MIN_MS = 400;
 // The INMP441 sits well below full scale for speech at desk distance.
 constexpr int MIC_GAIN = 3;
 
-// The mic task reads 10 ms blocks: the wake-word frontend steps 10 ms and the
-// VAD judges 10 ms frames, so one block feeds both.
+// One 10 ms block feeds both the wake-word frontend and the VAD.
 constexpr uint32_t MIC_BLOCK_MS = 10;
-// Every sample lands in a PSRAM ring first; recordings copy out of it. Power of
-// two so the running sample counter can wrap without a seam. 65536 samples is
-// 4 s, which covers a loop() that stalls on a beep or a slow web request.
+// PSRAM ring that recordings copy from. Power of two so the sample counter
+// wraps without a seam; 4 s covers a loop() stalled on a beep or web request.
 constexpr size_t MIC_RING_SAMPLES = 65536;
-// Without PSRAM the ring shrinks to half a second in internal RAM.
-constexpr size_t MIC_RING_SAMPLES_NO_PSRAM = 8192;
-// A button or page recording starts this far in the past, so the first
-// syllable spoken as the button goes down is not lost.
+constexpr size_t MIC_RING_SAMPLES_NO_PSRAM = 8192;  // 0.5 s in internal RAM
+// Button/page recordings start this far back, keeping the first syllable.
 constexpr unsigned long MIC_PREROLL_MS = 300;
 // Core 0 beside Wi-Fi (priority 23) and lwIP (18), well below both.
 constexpr uint8_t MIC_TASK_CORE = 0;
@@ -99,9 +76,8 @@ constexpr float WAKE_CUTOFF_MIN = 0.50f;
 constexpr float WAKE_CUTOFF_MAX = 0.99f;
 // After a detection the detector ignores the phrase's own tail.
 constexpr unsigned long WAKE_REFRACTORY_MS = 2000;
-// No echo cancellation (one INMP441, no reference feed from the amp), so the
-// detector is deaf while the speaker or buzzer sounds and for this long after;
-// a spoken reply may well contain the wake phrase.
+// No echo cancellation, so the detector is deaf while the speaker or buzzer
+// sounds and this long after; a spoken reply may contain the phrase.
 constexpr unsigned long WAKE_QUIET_AFTER_SOUND_MS = 700;
 // Streaming models need about a second of features to settle after re-arming.
 constexpr unsigned long WAKE_WARMUP_MS = 1000;

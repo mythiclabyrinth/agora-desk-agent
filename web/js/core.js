@@ -44,8 +44,7 @@ let voiceBusy = false,
   wakeState = {};
 const drafts = {};
 let statusAgents = [];
-// The hands-free agent (talk button, wake word, desk dial) from /api/status. A status fetched before the page's
-// own save of it finished is older than that save, so it is ignored (targetAgentAsOf).
+// The hands-free agent from /api/status; statuses requested before the page's own save of it are ignored.
 let targetAgent = '',
   targetAgentAsOf = 0;
 function el(tag, className, text) {

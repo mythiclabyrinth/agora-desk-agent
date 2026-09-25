@@ -17,9 +17,9 @@ one command plus a reflash.
 
 `models/hey_jarvis.tflite` + `.json`: the pre-trained **Hey Jarvis** v2 model from
 [esphome/micro-wake-word-models](https://github.com/esphome/micro-wake-word-models)
-(`models/v2/`, commit `05b6592`, Apache-2.0). Nobody has trained "Hey Agora" yet;
-until someone does, the desk answers to "Hey Jarvis". The firmware already strips
-both "hey jarvis" and "hey agora" from transcripts.
+(`models/v2/`, commit `05b6592`, Apache-2.0). The firmware strips both
+"hey jarvis" and "hey agora" from transcripts, so a Hey Agora model needs no code
+change.
 
 ## Training "Hey Agora"
 
@@ -75,7 +75,7 @@ the wake word could not start and everything else keeps working; add the op to
 
 ## Tuning on the desk
 
-Settings › Voice › Wake word shows a live score (the smoothed probability). Say the
+Settings › Voice › Devices › Wake word shows a live score (the smoothed probability). Say the
 phrase from where you sit and watch it: it should jump past the cutoff; normal
 talk, the speaker, and typing should stay low. Low / Medium / High sensitivity
 moves the cutoff by `WAKE_CUTOFF_SHIFT` (`Board.h`). The VAD that ends hands-free

@@ -7,9 +7,8 @@
 #include "Mic.h"
 
 // Hold the button and talk; let go to send. Or say the wake phrase, talk,
-// and pause. The clip goes to Groq for text, the text goes through the same
-// ChatClient the web page uses, and the reply is read out by Groq through
-// the speaker.
+// and pause. The clip is transcribed, sent through the same ChatClient the
+// web page uses, and the reply is spoken through the desk speaker.
 enum class VoicePhase { Idle, Recording, Transcribing, Waiting, Speaking, Done, Failed };
 
 // Who started this exchange: the physical button, the page's mic button, a
@@ -48,8 +47,8 @@ class VoiceFlow {
   bool wakeListening() const;
   // The detector is armed right now (policy, not the brief deaf windows).
   bool wakeArmed() const { return _wakeArmed; }
-  // Switch wake listening on or off (unmute / mute) and save it; the page
-  // and the GPIO 7 mute button both come through here.
+  // Unmute / mute wake listening and save it; the page and the mute button
+  // both come through here.
   bool setWakeEnabled(bool on, String &error);
   void setWakeSensitivity(const String &level);
 

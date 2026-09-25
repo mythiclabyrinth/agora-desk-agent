@@ -147,7 +147,7 @@ async function renderVoice() {
     panes[id].tabIndex = 0;
     tabs.append(tab);
   });
-  // Credentials — write-only keys, one row per provider, like Agora's API keys card.
+  // Credentials: write-only keys, one row per provider.
   const creds = panel(
     'Connect a speech provider',
     'Add an API key for the provider you want to use. One key can power both listening and spoken replies.',
@@ -372,9 +372,7 @@ async function renderVoice() {
   };
   let saveTimer = 0,
     agentPicks = 0;
-  // The hands-free agent lives on the Devices tab, so its save status shows there, not on Speech. It is sent only
-  // when picked here: the desk dial may have changed it since this page last looked, and saving an accent must
-  // not undo that.
+  // `agent` is sent only when picked here, so saving an accent never undoes a dial turn the page hasn't seen.
   const saveFeatures = (target = featureNote) => {
     clearTimeout(saveTimer);
     saveTimer = setTimeout(async () => {
