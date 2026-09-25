@@ -72,6 +72,31 @@ String clip(const String &body) {
   return text;
 }
 
+// Collects a response body up to a cap. Refusing a write makes HTTPClient
+// stop reading, so an oversized body never reaches the heap whole.
+class CappedBody : public Stream {
+ public:
+  CappedBody(String &into, size_t cap) : _into(into), _cap(cap) {}
+  size_t write(uint8_t c) override { return write(&c, 1); }
+  size_t write(const uint8_t *data, size_t len) override {
+    if (_into.length() + len > _cap) {
+      over = true;
+      return 0;
+    }
+    _into.concat(reinterpret_cast<const char *>(data), len);
+    return len;
+  }
+  int available() override { return 0; }
+  int read() override { return -1; }
+  int peek() override { return -1; }
+  void flush() override {}
+  bool over = false;
+
+ private:
+  String &_into;
+  size_t _cap;
+};
+
 }  // namespace
 
 ChatClient chatClient;
@@ -134,10 +159,13 @@ String ChatClient::endpoint() const {
   return trimUrl(_agent.url) + "/api/channels/" + _agent.channel + "/messages";
 }
 
+String ChatClient::agoraId(const AgentSettings &agent) {
+  return agent.agentId.length() ? agent.agentId : slugify(agent.name);
+}
+
 String ChatClient::mentionText() const {
-  String mention = _agent.agentId.length() ? _agent.agentId : slugify(_agent.name);
   String prefix = "@";
-  prefix += mention;
+  prefix += agoraId(_agent);
   if (_text.startsWith(prefix)) return _text;
   prefix += " ";
   prefix += _text;
@@ -167,25 +195,39 @@ void ChatClient::fail(const String &message) {
   Serial.println(message);
 }
 
-ChatClient::HttpResponse ChatClient::finishExchange(HTTPClient &http, bool post, const String &payload) {
+HttpResponse ChatClient::finishExchange(HTTPClient &http, const String &token, bool post, const String &payload,
+                                       size_t maxBody) {
   HttpResponse result;
   http.setTimeout(8000);
   http.setConnectTimeout(10000);
   String authorization = "Bearer ";
-  authorization += _agent.token;
+  authorization += token;
   http.addHeader("Authorization", authorization);
   http.addHeader("User-Agent", "Esp32Agent");
   if (post) http.addHeader("Content-Type", "application/json");
 
   int status = post ? http.POST(payload) : http.GET();
   result.status = status;
-  if (status > 0) result.body = http.getString();
-  else result.error = HTTPClient::errorToString(status);
+  if (status <= 0) {
+    result.error = HTTPClient::errorToString(status);
+  } else if (!maxBody) {
+    result.body = http.getString();
+  } else if (http.getSize() > (int)maxBody) {
+    result.tooBig = true;
+  } else {
+    CappedBody sink(result.body, maxBody);
+    http.writeToStream(&sink);
+    if (sink.over) {
+      result.tooBig = true;
+      result.body = String();
+    }
+  }
   http.end();
   return result;
 }
 
-ChatClient::HttpResponse ChatClient::exchange(bool post, const String &url, const String &payload) {
+HttpResponse ChatClient::exchange(const String &token, bool post, const String &url, const String &payload,
+                                  size_t maxBody) {
   // Keep the TCP client alive until HTTPClient::end(). Constructing the
   // TLS client only for https avoids the SSL buffer on ordinary LAN calls.
   if (url.startsWith("https://")) {
@@ -199,7 +241,7 @@ ChatClient::HttpResponse ChatClient::exchange(bool post, const String &url, cons
       result.error = "Could not open the Agora URL.";
       return result;
     }
-    return finishExchange(http, post, payload);
+    return finishExchange(http, token, post, payload, maxBody);
   }
 
   WiFiClient plain;
@@ -209,7 +251,17 @@ ChatClient::HttpResponse ChatClient::exchange(bool post, const String &url, cons
     result.error = "Could not open the Agora URL.";
     return result;
   }
-  return finishExchange(http, post, payload);
+  return finishExchange(http, token, post, payload, maxBody);
+}
+
+HttpResponse ChatClient::fetch(const AgentSettings &agent, const String &path, size_t maxBody) {
+  if (ESP.getFreeHeap() < 40000) {
+    HttpResponse result;
+    result.lowMemory = true;
+    result.error = "Not enough memory.";
+    return result;
+  }
+  return exchange(agent.token, false, trimUrl(agent.url) + path, "", maxBody);
 }
 
 void ChatClient::postMessage() {
@@ -221,7 +273,7 @@ void ChatClient::postMessage() {
   String payload = "{\"text\":\"";
   payload += jsonEscape(mentionText());
   payload += "\"}";
-  HttpResponse response = exchange(true, endpoint(), payload);
+  HttpResponse response = exchange(_agent.token, true, endpoint(), payload);
   if (response.status < 200 || response.status >= 300) {
     String message = "Agora rejected the message";
     if (response.status > 0) {
@@ -256,7 +308,7 @@ void ChatClient::pollReply() {
     return;
   }
 
-  HttpResponse response = exchange(false, endpoint() + "?limit=15", "");
+  HttpResponse response = exchange(_agent.token, false, endpoint() + "?limit=15", "");
   if (response.status < 200 || response.status >= 300) {
     Serial.print("Listen poll ");
     Serial.println(response.status);

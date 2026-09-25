@@ -17,6 +17,14 @@ struct ListenStatus {
   unsigned long waitedMs = 0;
 };
 
+struct HttpResponse {
+  int status = -1;
+  String body;
+  String error;
+  bool lowMemory = false;
+  bool tooBig = false;  // body over the caller's cap; dropped
+};
+
 class ChatClient {
  public:
   bool start(const String &agentKey, const AgentSettings &agent, const String &text);
@@ -24,19 +32,22 @@ class ChatClient {
   Phase phase() const;
   ListenStatus status() const;
 
- private:
-  struct HttpResponse {
-    int status = -1;
-    String body;
-    String error;
-  };
+  // GET {agent.url}{path} with the agent's bearer token. Blocks for the
+  // request. maxBody 0 keeps any size.
+  HttpResponse fetch(const AgentSettings &agent, const String &path, size_t maxBody);
+  // The id Agora knows the agent by: agent_id, else the slug of the name.
+  // Never the desk key.
+  static String agoraId(const AgentSettings &agent);
 
+ private:
   void postMessage();
   void pollReply();
   void succeed(const String &reply);
   void fail(const String &message);
-  HttpResponse exchange(bool post, const String &url, const String &payload);
-  HttpResponse finishExchange(HTTPClient &http, bool post, const String &payload);
+  HttpResponse exchange(const String &token, bool post, const String &url, const String &payload,
+                        size_t maxBody = 0);
+  HttpResponse finishExchange(HTTPClient &http, const String &token, bool post, const String &payload,
+                              size_t maxBody);
   String endpoint() const;
   String mentionText() const;
   void forgetToken();

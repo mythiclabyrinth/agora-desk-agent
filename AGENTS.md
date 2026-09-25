@@ -51,6 +51,7 @@ The page talks to the firmware only through the JSON API in `WebUi.cpp`:
 | `GET /api/listen` | state of the current chat job |
 | `POST /api/chat` | `{agent, text, speak}` → starts a job |
 | `GET/POST /api/agents` | per-agent settings (token is write-only) |
+| `POST /api/agents/{claude\|cursor\|codex}/channels` | `{url?, agent_id?, name?, token?}` (empty → saved value) → Agora's `GET /api/agents/{id}/channels` → `{agent: {id, name, live}, channels: [{id, name, group, kind}]}`, only the channels the agent belongs to; upstream failures are 502 with a sentence |
 | `POST /api/wifi`, `GET /api/wifi/scan` | join / scan |
 | `GET/POST /api/voice`, `POST /api/voice/keys`, `POST /api/voice/test` | voice settings; keys write-only; POST fields are optional and the page sends `agent` only when picked, so it never undoes a dial turn |
 | `POST /api/voice/talk` | `{action: start\|stop, agent}` drives the board mic from the page |
@@ -77,8 +78,8 @@ Adding a field: add it to the firmware handler, the page, **and**
   uploaded clips) goes in PSRAM via `heap_caps_malloc(..., MALLOC_CAP_SPIRAM)`
   with a fallback to heap and a hard cap. Check `ESP.getFreeHeap()` before big
   network calls, as `ChatClient` does.
-- **JSON**: `Json.h` is a minimal reader (top-level strings/longs/bools and the
-  Agora `messages` array). Responses are built by string concatenation; escape
+- **JSON**: `Json.h` is a minimal reader (top-level strings/longs/bools, the
+  Agora `messages` array, and flat objects via `jsonEachObject`/`jsonTopObject`). Responses are built by string concatenation; escape
   every user value with `jsonEscape`.
 - **Web JS**: classic scripts concatenated in the order `index.html` lists them,
   sharing one global scope. Top-level `let`/`const` that other files read at
@@ -114,6 +115,9 @@ Adding a field: add it to the firmware handler, the page, **and**
 - **`@mention` resolution** is by exact `agent_id` or the slug of the display
   name, matching Agora. `ChatClient::sameAgent` picks the reply the same way;
   if a user's replies aren't caught, the id is wrong, not the polling.
+- **The Agora agent id is `ChatClient::agoraId`**: `agent_id`, else the slug of
+  the display name. The desk key (`claude`/`cursor`/`codex`) is only the board's
+  slot name; never send it to Agora (e.g. the channel list route).
 - **Browser microphone needs a secure origin.** Over plain HTTP `getUserMedia`
   is absent and the page offers the desk mic instead. Don't "fix" this in JS —
   it's a browser rule. HTTPS on the board would mean replacing `WebServer` with

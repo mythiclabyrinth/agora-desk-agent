@@ -2,8 +2,9 @@
 
 #include <Arduino.h>
 
-// Just enough JSON for Agora message bodies. The board only needs a few
-// top-level fields and the messages array, so this stays off ArduinoJson.
+// Just enough JSON for Agora bodies. The board only needs a few top-level
+// fields, the messages array and the channel list, so this stays off
+// ArduinoJson.
 
 inline bool jsonIsWs(char c) {
   return c == ' ' || c == '\n' || c == '\r' || c == '\t';
@@ -354,4 +355,121 @@ inline bool jsonEachMessage(const String &json, JsonMessageFn fn, void *ctx) {
   walk.ctx = ctx;
   jsonForEachTopField(json, jsonTakeMessages, &walk);
   return walk.saw;
+}
+
+// One flat Agora object: an entry of the channels array, or the agent header
+// beside it. Fields it does not know, and non-scalar values, are skipped.
+struct JsonItem {
+  String id;
+  String name;
+  String group;
+  String kind;
+  bool member = false;
+  bool live = false;
+};
+
+inline bool jsonReadItem(const String &json, int &i, JsonItem &item) {
+  jsonSkipWs(json, i);
+  if (i >= (int)json.length() || json[i] != '{') return false;
+  i++;
+  while (true) {
+    jsonSkipWs(json, i);
+    if (i >= (int)json.length()) return false;
+    if (json[i] == '}') {
+      i++;
+      return true;
+    }
+    String key;
+    if (!jsonParseString(json, i, key)) return false;
+    jsonSkipWs(json, i);
+    if (i >= (int)json.length() || json[i] != ':') return false;
+    i++;
+    jsonSkipWs(json, i);
+    String *text = key == "id" ? &item.id
+                   : key == "name" ? &item.name
+                   : key == "group" ? &item.group
+                   : key == "kind" ? &item.kind
+                                   : nullptr;
+    bool *flag = key == "member" ? &item.member : key == "live" ? &item.live : nullptr;
+    if (text && i < (int)json.length() && json[i] == '"') {
+      if (!jsonParseString(json, i, *text)) return false;
+    } else if (flag && json.startsWith("true", i)) {
+      *flag = true;
+      i += 4;
+    } else if (flag && json.startsWith("false", i)) {
+      *flag = false;
+      i += 5;
+    } else if (!jsonSkipValue(json, i)) {
+      return false;
+    }
+    jsonSkipWs(json, i);
+    if (i < (int)json.length() && json[i] == ',') i++;
+  }
+}
+
+using JsonItemFn = void (*)(const JsonItem &item, void *ctx);
+
+struct JsonItemWalk {
+  const char *key;
+  JsonItemFn fn;
+  void *ctx;
+  bool saw = false;
+};
+
+inline bool jsonTakeItems(const String &key, const String &json, int &i, void *ctx) {
+  auto *walk = static_cast<JsonItemWalk *>(ctx);
+  if (key != walk->key) return false;
+  jsonSkipWs(json, i);
+  if (i >= (int)json.length() || json[i] != '[') return true;
+  i++;
+  while (true) {
+    jsonSkipWs(json, i);
+    if (i >= (int)json.length()) return true;
+    if (json[i] == ']') {
+      i++;
+      walk->saw = true;
+      return true;
+    }
+    JsonItem item;
+    if (!jsonReadItem(json, i, item)) return true;
+    walk->fn(item, walk->ctx);
+    jsonSkipWs(json, i);
+    if (i < (int)json.length() && json[i] == ',') i++;
+  }
+}
+
+// Calls fn for each object in the top-level array `key`, in order. True once
+// the whole array was read (an empty one counts).
+inline bool jsonEachObject(const String &json, const char *key, JsonItemFn fn, void *ctx) {
+  JsonItemWalk walk;
+  walk.key = key;
+  walk.fn = fn;
+  walk.ctx = ctx;
+  jsonForEachTopField(json, jsonTakeItems, &walk);
+  return walk.saw;
+}
+
+struct JsonTopItem {
+  const char *key;
+  JsonItem item;
+  bool found = false;
+};
+
+inline bool jsonTakeItem(const String &key, const String &json, int &i, void *ctx) {
+  auto *hit = static_cast<JsonTopItem *>(ctx);
+  if (key != hit->key) return false;
+  int at = i;
+  hit->found = jsonReadItem(json, i, hit->item);
+  if (!hit->found) i = at;
+  return true;
+}
+
+// The top-level object `key`, read as a flat item.
+inline bool jsonTopObject(const String &json, const char *key, JsonItem &out) {
+  JsonTopItem hit;
+  hit.key = key;
+  jsonForEachTopField(json, jsonTakeItem, &hit);
+  if (!hit.found) return false;
+  out = hit.item;
+  return true;
 }

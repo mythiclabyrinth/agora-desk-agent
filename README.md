@@ -105,12 +105,14 @@ If you changed anything in `web/`, run `python3 web/build.py` first (see
 
 1. Run the Agora server and at least one bridge (`bridges/claude-cli`, `cursor-cli`,
    `codex-cli`) on your computer, as usual.
-2. In Agora, create (or pick) a channel the agent is in and note its channel id.
+2. In Agora, create (or pick) a channel the agent is in.
 3. On the board's page, Settings › Wi-Fi: join your network.
 4. Settings › Agents: for each agent, enter the Agora URL (e.g.
-   `http://192.168.1.20:4470`), the channel id, an access token, and make sure
-   **Agent ID** matches the bridge's `AGENT_ID` (the `@mention` is resolved by
-   exact id or by the slug of the agent's display name).
+   `http://192.168.1.20:4470`), an access token, and make sure **Agent ID**
+   matches the bridge's `AGENT_ID` (the `@mention` is resolved by exact id or by
+   the slug of the agent's display name). Then **Load channels** and pick one of
+   the channels the agent belongs to. **Type an ID instead** still works, for
+   example with an Agora server that cannot list channels.
 5. Optional — Settings › Voice: paste a Groq (`gsk_…`) or OpenAI (`sk-…`) key,
    choose providers/models, and pick the hands-free agent under Devices.
 

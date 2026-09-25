@@ -1215,6 +1215,28 @@ input:focus {
   gap: 16px;
   align-items: start;
 }
+.channel-field {
+  display: grid;
+  gap: 4px;
+}
+.channel-row {
+  display: flex;
+  gap: 8px;
+  align-items: end;
+}
+.channel-row label {
+  flex: 1;
+  min-width: 0;
+}
+.channel-foot {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+.channel-foot .text-button {
+  flex: none;
+}
 .settings-content {
   min-width: 0;
 }

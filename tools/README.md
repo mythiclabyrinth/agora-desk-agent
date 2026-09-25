@@ -17,6 +17,12 @@ forwarded to a board, and demo saves last only until the process stops.
   agent (`voice.target_agent`) between Claude and Cursor every three seconds. The
   Hands-free agent picker follows it (unless it has focus), and so does the Overview's
   “hands-free” badge.
+- Settings › Agents › **Load channels** returns a demo list after a short pause: Claude is
+  in `#desk` and its direct messages, Cursor in `#general`, Codex in none.
+- `/?scenario=channels-error#settings`: Load channels cannot reach Agora; the note shows the
+  error and **Type an ID instead** still works.
+- `/?scenario=channels-old#settings`: the Agora server is too old to list channels; same
+  fallback.
 - Wi-Fi scanning and joining use demo data only.
 - Send a message containing `preview-error` to simulate a failed send.
 - Other messages receive an explicitly labeled demo response after four seconds.
