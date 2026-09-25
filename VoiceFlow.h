@@ -101,6 +101,7 @@ class VoiceFlow {
   // The slower readiness checks (keys, agent, Wi-Fi), refreshed once a second.
   bool _wakeReady = false;
   unsigned long _wakeCheckedAt = 0;
+  unsigned long _wakeTracedAt = 0;
 };
 
 const char *voicePhaseName(VoicePhase phase);

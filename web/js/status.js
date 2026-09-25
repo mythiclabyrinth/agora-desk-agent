@@ -131,7 +131,8 @@ function trackWake(w) {
   wakeState = w;
   const m = $('#wake-meter');
   if (!m) return;
-  const pct = Math.round(Math.max(0, Math.min(1, +w.score || 0)) * 100);
+  // The peak is held for a few seconds on the board, so a short phrase shows between polls.
+  const pct = Math.round(Math.max(0, Math.min(1, +w.peak || +w.score || 0)) * 100);
   m.firstChild.style.width = pct + '%';
   m.setAttribute('aria-valuenow', String(pct));
   m.classList.toggle('idle', !w.armed);

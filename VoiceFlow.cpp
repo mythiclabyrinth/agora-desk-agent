@@ -267,6 +267,17 @@ void VoiceFlow::updateWake() {
   // a beep, so it does not flicker. Any recording lights it, even when muted.
   feedback.listenLed(arm || _phase == VoicePhase::Recording);
 
+  // A tuning trace: quiet in a silent room, one line a second while the
+  // model reacts to something.
+  unsigned long now = millis();
+  if (arm && now - _wakeTracedAt >= WAKE_TRACE_MS) {
+    _wakeTracedAt = now;
+    float peak = wakeWord.peak();
+    if (peak >= WAKE_TRACE_MIN) {
+      Serial.printf("Wake word: peak %.2f, score %.2f, cutoff %.2f\n", peak, wakeWord.score(), wakeWord.cutoff());
+    }
+  }
+
   uint32_t samplePos = 0;
   // A detection that raced a disarm is dropped: the board has moved on.
   if (wakeWord.takeDetection(samplePos) && arm) onWake(samplePos);

@@ -88,6 +88,12 @@ constexpr unsigned long WAKE_QUIET_AFTER_SOUND_MS = 700;
 constexpr unsigned long WAKE_WARMUP_MS = 1000;
 // Tensor arena ceiling. The manifest asks for ~23 KB; probing may grow it.
 constexpr size_t WAKE_ARENA_MAX = 64 * 1024;
+// The model's per-step output peaks for a few tens of ms; the page polls once
+// a second, so the peak is held this long for the meter and the serial trace.
+constexpr unsigned long WAKE_PEAK_HOLD_MS = 3000;
+// Serial trace cadence while armed; it prints only when the peak is above this.
+constexpr unsigned long WAKE_TRACE_MS = 1000;
+constexpr float WAKE_TRACE_MIN = 0.05f;
 
 // Energy VAD on 10 ms frames, levels in dB re 1 LSB (full scale is ~90 dB).
 // Speech is the level this far above the adaptive noise floor...

@@ -55,7 +55,8 @@ def wake_status(armed=True, score=0.0):
     on = VOICE['wake_enabled'] and VOICE['wake_available']
     return dict(enabled=VOICE['wake_enabled'], muted=not VOICE['wake_enabled'], available=VOICE['wake_available'],
                 armed=on and armed, sensitivity=VOICE['wake_sensitivity'], phrase=VOICE['wake_phrase'],
-                score=round(score if on and armed else 0.0, 2))
+                score=round(score if on and armed else 0.0, 2),
+                peak=round(min(1.0, score * 1.5) if on and armed else 0.0, 2))
 
 
 def voice_ready():

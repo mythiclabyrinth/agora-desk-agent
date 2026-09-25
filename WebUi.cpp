@@ -450,8 +450,8 @@ void WebUi::handleVoiceGet() {
   sendJson(200, body);
 }
 
-// {enabled, available, armed, muted, phrase, score}: what the page needs to
-// draw the wake-word section and the tuning meter.
+// {enabled, available, armed, muted, phrase, score, peak}: what the page needs
+// to draw the wake-word section and the tuning meter.
 String WebUi::wakeJson() {
   bool enabled = configStore.wake().enabled;
   String body = "{\"enabled\":";
@@ -468,6 +468,8 @@ String WebUi::wakeJson() {
   body += jsonEscape(wakeWord.phrase());
   body += "\",\"score\":";
   body += String(wakeWord.score(), 2);
+  body += ",\"peak\":";
+  body += String(wakeWord.peak(), 2);
   body += '}';
   return body;
 }
