@@ -9,8 +9,8 @@ struct ScreenLines;
 
 // Decides what the LCD shows. It polls the other modules (none of them know
 // the display exists), turns their state into the main screen (Screens.h),
-// and raises a notice on each transition worth telling: reply, error, mute,
-// dial, wake, Wi-Fi.
+// and raises a notice on each transition worth telling: reply, error, cancel,
+// mute, dial, wake, Wi-Fi.
 class StatusScreen {
  public:
   // Before the slow parts of setup(), so the boot screen shows during Wi-Fi join.

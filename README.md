@@ -36,9 +36,11 @@ use voice, a Groq and/or OpenAI key for speech.
   TTS). Provider, model, voice and accent are picked per direction under
   Settings › Voice.
 - **Wake word (hands-free)** — say "Hey Jarvis", wait for two beeps, speak, and
-  pause. The model runs on the board (microWakeWord on TensorFlow Lite Micro);
-  an energy VAD ends the recording when you stop talking and drops it if you
-  said nothing. Holding the dial's knob (or Settings › Voice) mutes and
+  pause, or click the talk button once to send now, twice to cancel. The model
+  runs on the board (microWakeWord on TensorFlow Lite Micro); an energy VAD ends
+  the recording when you stop talking and drops it if you said nothing. A slider
+  under Settings › Voice › Devices sets the cutoff the detector's score must
+  pass (lower hears you from further away, higher wakes falsely less). Holding the dial's knob (or Settings › Voice) mutes and
   unmutes it, and a **blue LED** is lit whenever the board's mic is listening.
   The wake word is deaf while the board beeps or speaks. To train a "Hey Agora"
   model, see [tools/wake/README.md](tools/wake/README.md).
@@ -54,8 +56,8 @@ use voice, a Groq and/or OpenAI key for speech.
 - **Status display (optional)** — a 16x2 I2C LCD shows the hands-free agent,
   whether the wake word is listening (or muted), and the Wi-Fi address; during
   an exchange it shows listening, thinking, waiting (with a timer) and
-  speaking. Short notices cover replies landing, errors, dial turns, mute, the
-  wake word and Wi-Fi changes. The backlight goes off after a minute at rest
+  speaking. Short notices cover replies landing, errors, cancelled recordings,
+  dial turns, mute, the wake word and Wi-Fi changes. The backlight goes off after a minute at rest
   and comes back on any activity.
 - **Voice from the browser (no extra hardware)** — the chat's mic button records
   with the browser's microphone and the speaker toggle plays replies through the

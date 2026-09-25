@@ -1,8 +1,11 @@
 // Voice in the conversation: board button mirroring, speaker toggle, browser/desk microphone.
 // Spoken exchanges happen on the board, not in this page. Copy each finished one into the chat log once.
 // A "typed" source is a normal chat message being read aloud: the page already logged it.
-let voiceState = { state: 'idle' };
+let voiceState = { state: 'idle' },
+  voiceCancelledAt = 0;
 function trackVoice(v) {
+  // A double click on the talk button drops the recording; the composer says so for a few seconds.
+  if (v.cancelled && voiceState.state === 'recording') voiceCancelledAt = Date.now();
   voiceState = v;
   voiceBusy = ['recording', 'transcribing', 'waiting', 'speaking'].includes(v.state);
   if (audioMode === 'desk') micRecording = v.state === 'recording' && v.source === 'page';

@@ -46,7 +46,7 @@ const char *voiceSourceName(VoiceSource source) {
 void VoiceFlow::begin() {
   _talk.begin(TALK_BUTTON_PIN);
   audio.begin();
-  wakeWord.setSensitivity(configStore.wake().sensitivity.c_str());
+  wakeWord.setCutoff(configStore.wake().cutoff);
 }
 
 bool VoiceFlow::busy() const {
@@ -65,10 +65,22 @@ VoiceStatus VoiceFlow::status() const {
   s.error = _error;
   s.recordedMs = _phase == VoicePhase::Recording ? audio.recordedMs() : _recordedMs;
   s.missed = _phase == VoicePhase::Failed && _missed;
+  s.cancelled = _phase == VoicePhase::Idle && _cancelled;
   return s;
 }
 
+bool VoiceFlow::clickRecording() const {
+  return _phase == VoicePhase::Recording && (_source == VoiceSource::Wake || _source == VoiceSource::Page);
+}
+
 void VoiceFlow::readButtons() {
+  // A single click is known only once the double-click window has passed.
+  if (_clicks.poll(millis()) == ClickCounter::Click::Single && clickRecording()) {
+    Serial.print("Voice: talk button ends the ");
+    Serial.print(voiceSourceName(_source));
+    Serial.println(" recording");
+    finishRecording();
+  }
   int8_t talk = _talk.poll();
   if (talk > 0) onPress();
   else if (talk < 0) onRelease();
@@ -167,12 +179,13 @@ bool VoiceFlow::beginRecording(const String &agentKey, VoiceSource source, Strin
 }
 
 void VoiceFlow::onPress() {
-  // Pressing the talk button during a hands-free recording means "done, send it".
-  if (_phase == VoicePhase::Recording && _source == VoiceSource::Wake) {
-    Serial.println("Voice: talk button ends the wake recording");
-    finishRecording();
+  // During a wake or page recording the button clicks: once sends, twice
+  // cancels. Holding it never starts a recording of its own.
+  if (clickRecording()) {
+    if (_clicks.press(millis()) == ClickCounter::Click::Double) cancelRecording("talk button", true);
     return;
   }
+  _clicks.reset();
   if (busy()) return;
   String error;
   if (!beginRecording(configStore.voice().agentKey, VoiceSource::Button, error, MIC_PREROLL_MS)) fail(error);
@@ -206,11 +219,11 @@ bool VoiceFlow::setWakeEnabled(bool on, String &error) {
   return true;
 }
 
-void VoiceFlow::setWakeSensitivity(const String &level) {
+void VoiceFlow::setWakeCutoff(uint8_t cutoff) {
   WakeSettings w = configStore.wake();
-  w.sensitivity = level;
+  w.cutoff = cutoff;
   configStore.saveWake(w);
-  wakeWord.setSensitivity(configStore.wake().sensitivity.c_str());
+  wakeWord.setCutoff(configStore.wake().cutoff);
 }
 
 // Mute means "stop listening now": it turns wake listening off and, if the
@@ -219,6 +232,7 @@ void VoiceFlow::toggleMute() {
   String error;
   if (_phase == VoicePhase::Recording) {
     audio.discardRecording();
+    _cancelled = false;
     setPhase(VoicePhase::Idle);
     _recordedMs = 0;
     Serial.println("Voice: muted, recording discarded");
@@ -311,7 +325,7 @@ void VoiceFlow::checkWakeEnd() {
       finishRecording();
       break;
     case VadVerdict::NoSpeech:
-      cancelWake("no speech after the wake word");
+      cancelRecording("no speech after the wake word");
       break;
     default:
       break;
@@ -321,11 +335,14 @@ void VoiceFlow::checkWakeEnd() {
 // A false wake or a change of mind: no error beeps, no chat log entry, and
 // above all no silent clip sent to Whisper (it answers silence with
 // "Thank you.").
-void VoiceFlow::cancelWake(const char *why) {
+void VoiceFlow::cancelRecording(const char *why, bool byUser) {
   audio.discardRecording();
+  _cancelled = byUser;
   setPhase(VoicePhase::Idle);
   _recordedMs = 0;
-  Serial.print("Voice: wake recording cancelled, ");
+  Serial.print("Voice: ");
+  Serial.print(voiceSourceName(_source));
+  Serial.print(" recording cancelled, ");
   Serial.println(why);
   feedback.follow(chatClient.phase());
   feedback.cancel();
@@ -363,8 +380,9 @@ bool VoiceFlow::speakWhenDone(uint32_t chatJob, const String &agentKey, String &
 }
 
 void VoiceFlow::onRelease() {
+  if (_clicks.release(millis())) return;
   // The physical button only ends what the physical button started; a page
-  // recording ends when the page says so or the length cap trips.
+  // recording ends on the page's word, a click, or the length cap.
   if (_source == VoiceSource::Button) finishRecording();
 }
 
@@ -372,7 +390,7 @@ void VoiceFlow::finishRecording() {
   if (_phase != VoicePhase::Recording) return;
   audio.pumpRecording();
   if (_source == VoiceSource::Wake && !wakeHeardSpeech(mic.vad())) {
-    cancelWake("the VAD heard no speech");
+    cancelRecording("the VAD heard no speech");
     return;
   }
   audio.stopRecording();

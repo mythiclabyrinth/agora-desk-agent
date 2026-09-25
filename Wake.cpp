@@ -83,15 +83,6 @@ void resetVariables() {
   variables = allocator ? tflite::MicroResourceVariables::Create(allocator, MAX_VARIABLES) : nullptr;
 }
 
-uint8_t cutoffFor(const char *level) {
-  float cutoff = WAKE_MODEL_CUTOFF;
-  if (level && !strcmp(level, "low")) cutoff += WAKE_CUTOFF_SHIFT;    // harder to trigger
-  if (level && !strcmp(level, "high")) cutoff -= WAKE_CUTOFF_SHIFT;   // easier to trigger
-  if (cutoff < WAKE_CUTOFF_MIN) cutoff = WAKE_CUTOFF_MIN;
-  if (cutoff > WAKE_CUTOFF_MAX) cutoff = WAKE_CUTOFF_MAX;
-  return static_cast<uint8_t>(cutoff * 255.0f + 0.5f);
-}
-
 }  // namespace
 
 WakeWord wakeWord;
@@ -99,8 +90,12 @@ WakeWord wakeWord;
 const char *WakeWord::phrase() const { return WAKE_MODEL_PHRASE; }
 const char *WakeWord::name() const { return WAKE_MODEL_NAME; }
 
+uint8_t WakeWord::modelCutoff() {
+  return static_cast<uint8_t>(WAKE_MODEL_CUTOFF * 255.0f + 0.5f);
+}
+
 bool WakeWord::begin() {
-  _cutoff.store(cutoffFor("medium"));
+  _cutoff.store(modelCutoff());
 
   FrontendConfig config;
   FrontendFillConfigWithDefaults(&config);
@@ -206,10 +201,6 @@ void WakeWord::holdOff(unsigned long ms) {
   uint32_t until = millis() + ms;
   // Only extend: a short beep must not cut a longer hold from the speaker.
   if (static_cast<int32_t>(until - _holdUntil.load()) > 0) _holdUntil.store(until);
-}
-
-void WakeWord::setSensitivity(const char *level) {
-  _cutoff.store(cutoffFor(level));
 }
 
 bool WakeWord::takeDetection(uint32_t &samplePos) {

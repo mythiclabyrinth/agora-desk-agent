@@ -28,8 +28,10 @@ class WakeWord {
   bool listening() const { return _listening.load(); }
   // The speaker or buzzer is (about to be) making sound: stay deaf for `ms`.
   void holdOff(unsigned long ms);
-  // low | medium | high; moves the model's cutoff (Board.h).
-  void setSensitivity(const char *level);
+  // 0-255, the unit the detector compares in; ConfigStore clamps it.
+  void setCutoff(uint8_t cutoff) { _cutoff.store(cutoff); }
+  // The model's own cutoff (WakeModel.h) in the same unit.
+  static uint8_t modelCutoff();
   // A detection since the last call? `samplePos` is the mic position at the
   // end of the phrase, so a recording can start exactly there.
   bool takeDetection(uint32_t &samplePos);
