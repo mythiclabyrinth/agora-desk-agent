@@ -26,6 +26,7 @@ private:
   void handleTranscribeUpload();
   void handleTranscribe();
   void handleSay();
+  void handleTone();
   void dropClip();
   void handleCaptive();
   void handleNotFound();

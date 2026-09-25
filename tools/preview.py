@@ -231,6 +231,9 @@ class Handler(BaseHTTPRequestHandler):
             VOICE['keys'][data['provider']] = not data.get('clear')
             voice_ready()
             self.reply({'ok':True})
+        elif self.path == '/api/voice/tone':
+            time.sleep(1.0)
+            self.reply({'ok':True})
         elif self.path == '/api/voice/test':
             time.sleep(0.8)
             if not VOICE['keys'].get(data['provider']):

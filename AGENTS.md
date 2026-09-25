@@ -57,6 +57,7 @@ The page talks to the firmware only through the JSON API in `WebUi.cpp`:
 | `POST /api/voice/wake` | `{enabled?, sensitivity?}` wake word on/off (= the mute button) and low\|medium\|high; allowed mid-exchange → `{wake}` |
 | `POST /api/voice/transcribe` | multipart clip from the browser mic → `{text}` |
 | `POST /api/voice/say` | `{text}` → finite WAV for the browser to play |
+| `POST /api/voice/tone` | a second of 440 Hz through the desk speaker; checks the amp without a provider |
 
 Adding a field: add it to the firmware handler, the page, **and**
 `tools/preview.py`'s mock, or the preview will drift from the device.
@@ -99,6 +100,10 @@ Adding a field: add it to the firmware handler, the page, **and**
   header carries `0xFFFFFFFF` sizes and may include a `LIST` chunk, so the
   parser walks RIFF chunks instead of trusting 44 bytes. Browser-bound audio
   must be a finite WAV — `Speech::synthesize` rewrites the header (`Wav.h`).
+- **PCM reaches the amp in whole frames.** `Speech::speakOnce` carries the
+  tail of a split sample to the next socket read; the I2S DMA takes bytes
+  verbatim, so an odd-length write would shift every later sample by a byte
+  and play as noise.
 - **Groq Orpheus takes ≤ 200 characters per request**; `speechChunks` splits at
   sentence boundaries. Arabic accent swaps to the Arabic model and voices.
 - **Secrets are write-only.** Agora tokens and speech keys are never echoed by

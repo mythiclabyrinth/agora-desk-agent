@@ -481,6 +481,7 @@ bool Speech::speakOnce(const String &provider, const String &key, const String &
     error += "\").";
   }
   bool haveFmt = false;
+  uint16_t format = 0;
   uint32_t rate = 0;
   uint16_t channels = 0;
   uint16_t bits = 0;
@@ -504,24 +505,39 @@ bool Speech::speakOnce(const String &provider, const String &key, const String &
         error = "Speech stream ended early.";
         break;
       }
+      format = le16(fmt);
       channels = le16(fmt + 2);
       rate = le32(fmt + 4);
       bits = le16(fmt + 14);
       haveFmt = true;
       if (size & 1) body.skip(1);
     } else if (!memcmp(ch, "data", 4)) {
-      if (!haveFmt || bits != 16 || !sink.format(rate, channels, bits, sink.ctx)) {
+      Serial.printf("Speech: WAV format %u, %lu Hz, %u ch, %u-bit, data %s\n", format, (unsigned long)rate, channels,
+                    bits, size == 0xFFFFFFFFu ? "streamed" : String(size).c_str());
+      // 1 is PCM; 0xFFFE (extensible) carries 16-bit PCM from every speech API.
+      bool pcmWav = format == 1 || format == 0xFFFE;
+      if (!haveFmt || !pcmWav || bits != 16 || !sink.format(rate, channels, bits, sink.ctx)) {
         ok = false;
         error = "Cannot play this audio format.";
         break;
       }
       bool untilClose = size == 0xFFFFFFFFu;
       size_t remaining = size;
+      // The socket hands over arbitrary byte counts, and the I2S DMA takes
+      // bytes verbatim, so a read that ends mid-sample would shift every
+      // sample after it by a byte. Only whole frames reach the sink; the
+      // tail of a split frame waits for the next read.
+      const size_t frame = channels * (bits / 8);
       uint8_t pcm[1024];
+      size_t held = 0;
+      size_t total = 0;
+      size_t splitReads = 0;
+      bool logged = false;
       unsigned long last = millis();
       while (untilClose || remaining) {
-        size_t want = untilClose ? sizeof(pcm) : min(sizeof(pcm), remaining);
-        int got = body.read(pcm, want);
+        size_t want = sizeof(pcm) - held;
+        if (!untilClose) want = min(want, remaining);
+        int got = body.read(pcm + held, want);
         if (got < 0) break;  // body finished: normal end for an open-ended data chunk
         if (got == 0) {
           if (millis() - last > STREAM_TIMEOUT_MS) {
@@ -533,13 +549,26 @@ bool Speech::speakOnce(const String &provider, const String &key, const String &
           continue;
         }
         last = millis();
-        if (!sink.pcm(pcm, got, sink.ctx)) {
+        if (!untilClose) remaining -= got;
+        size_t have = held + got;
+        size_t whole = have - have % frame;
+        if (have != whole) splitReads++;
+        if (!logged && whole >= 16) {
+          logged = true;
+          Serial.print("Speech: first samples");
+          for (size_t i = 0; i < 16; i += 2) Serial.printf(" %d", static_cast<int16_t>(le16(pcm + i)));
+          Serial.println();
+        }
+        if (whole && !sink.pcm(pcm, whole, sink.ctx)) {
           ok = false;
           error = "The reply is too long to speak here.";
           break;
         }
-        if (!untilClose) remaining -= got;
+        total += whole;
+        held = have - whole;
+        if (held) memmove(pcm, pcm + whole, held);
       }
+      Serial.printf("Speech: %u PCM bytes, %u reads ended mid-sample\n", (unsigned)total, (unsigned)splitReads);
       break;
     } else {
       if (size == 0xFFFFFFFFu || !body.skip(size + (size & 1))) {

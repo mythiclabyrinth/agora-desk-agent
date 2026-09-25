@@ -101,6 +101,7 @@ void WebUi::begin() {
   _server.on("/api/voice/transcribe", HTTP_POST, [this]() { handleTranscribe(); },
              [this]() { handleTranscribeUpload(); });
   _server.on("/api/voice/say", HTTP_POST, [this]() { handleSay(); });
+  _server.on("/api/voice/tone", HTTP_POST, [this]() { handleTone(); });
 
   const char *captive[] = {
       "/generate_204", "/gen_204", "/hotspot-detect.html", "/library/test/success.html",
@@ -807,6 +808,32 @@ void WebUi::handleSay() {
   _server.send(200, "audio/wav", "");
   _server.sendContent(reinterpret_cast<const char *>(clip.data), clip.len);
   wavFree(clip);
+}
+
+// A second of 440 Hz through the speaker path, so the amp can be checked
+// without a speech provider: a clean tone here and noise from speech points
+// at the stream, not the I2S setup.
+void WebUi::handleTone() {
+  if (voiceFlow.busy()) {
+    sendError(409, "Wait for the current voice message to finish.");
+    return;
+  }
+  if (!audio.startPlayback(24000, 1, 16)) {
+    sendError(409, "Speaker is not connected.");
+    return;
+  }
+  int16_t block[480];  // 20 ms at 24 kHz
+  float phase = 0;
+  for (int n = 0; n < 50; n++) {
+    for (size_t i = 0; i < sizeof(block) / sizeof(block[0]); i++) {
+      block[i] = static_cast<int16_t>(6000 * sinf(phase));
+      phase += 2 * PI * 440 / 24000;
+      if (phase > 2 * PI) phase -= 2 * PI;
+    }
+    audio.play(reinterpret_cast<const uint8_t *>(block), sizeof(block));
+  }
+  audio.stopPlayback();
+  sendJson(200, "{\"ok\":true}");
 }
 
 void WebUi::handleChat() {

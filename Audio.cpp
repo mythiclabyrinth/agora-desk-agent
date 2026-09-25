@@ -99,6 +99,7 @@ bool Audio::startPlayback(uint32_t sampleRate, uint16_t channels, uint16_t bitsP
     _playRate = sampleRate;
     _playChannels = channels;
   }
+  Serial.printf("Speaker: %lu Hz, %s, 16-bit\n", (unsigned long)_playRate, _playChannels == 2 ? "stereo" : "mono");
   _playing = true;
   return true;
 }
