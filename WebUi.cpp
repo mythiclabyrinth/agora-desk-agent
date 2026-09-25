@@ -3,6 +3,7 @@
 #include "Board.h"
 #include "ChatClient.h"
 #include "Config.h"
+#include "Display.h"
 #include "Json.h"
 #include "Page.h"
 #include "Portal.h"
@@ -224,7 +225,9 @@ void WebUi::handleStatus() {
     body += agent.ready ? "true" : "false";
     body += '}';
   }
-  body += "]}";
+  body += "],\"display\":{\"present\":";
+  body += display.present() ? "true" : "false";
+  body += "}}";
   sendJson(200, body);
 }
 

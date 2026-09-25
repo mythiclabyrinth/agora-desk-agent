@@ -34,6 +34,9 @@ class AgentDial {
  public:
   void begin();
   void update();
+  // Cues played so far (turn at rest, or a press); a change means the user
+  // was just told the hands-free agent.
+  uint32_t cueCount() const { return _cues; }
 
  private:
   enum class Cue : uint8_t { None, Position, OnlyOne, NoneReady };
@@ -47,6 +50,7 @@ class AgentDial {
   bool _unsaved = false;
   unsigned long _saveAt = 0;
   unsigned long _pressedAt = 0;
+  uint32_t _cues = 0;
 };
 
 extern AgentDial agentDial;

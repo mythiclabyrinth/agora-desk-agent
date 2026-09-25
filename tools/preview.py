@@ -143,7 +143,8 @@ class Handler(BaseHTTPRequestHandler):
             self.reply(dict(wifi=not offline, ssid='Studio Wi-Fi', ip='192.168.0.113', ap_ip='192.168.4.1',
                             host='esp32-agent.local', listening=bool(JOB['number'] and time.time()-JOB['started'] < 4),
                             voice=voice,
-                            agents=[dict(id=a['id'], name=a['name'], ready=agent_ready(a, scenario)) for a in AGENTS]))
+                            agents=[dict(id=a['id'], name=a['name'], ready=agent_ready(a, scenario)) for a in AGENTS],
+                            display=dict(present=True)))
         elif path == '/api/voice':
             self.reply(VOICE)
         elif path == '/api/wifi/scan':

@@ -4,9 +4,10 @@
 
 // ESP32-S3 header on this board, top to bottom beside the USB socket:
 // GND, 5V, 13, 12, 11, 10, 9, 46, 3, 8, 18, 17, 16, 15, 7, 6, 5, 4, RST, 3V3.
-// GPIO 7 and 8 are free. 3 and 46 are strapping pins, so only parts that are
-// safe at reset go there: 46 must not be pulled high while GPIO 0 is low (the
-// upload path), and 3 is ignored at boot unless the JTAG-select eFuse is burned.
+// Every pin on it is in use; 8 and 7 carry the LCD's I2C bus. 3 and 46 are
+// strapping pins, so only parts that are safe at reset go there: 46 must not
+// be pulled high while GPIO 0 is low (the upload path), and 3 is ignored at
+// boot unless the JTAG-select eFuse is burned.
 // Off this header, 35-37 belong to the octal PSRAM, 26-32 to flash, 19/20 to USB.
 // Buttons (talk, mute, knob switch) go to GND and use the internal pull-up.
 constexpr uint8_t LED_PIN = 5;
@@ -108,6 +109,42 @@ constexpr unsigned long VAD_MIN_SPEECH_MS = 200;
 // The chime itself is loud enough to count as speech; start judging after it
 // ends plus more than the hangover, or its tail would pass for a word.
 constexpr unsigned long VAD_CHIME_SKIP_MS = 300;
+
+// 16x2 HD44780 LCD on a PCF8574 I2C backpack. The backpack wants 5V for
+// contrast, which puts its SDA/SCL pull-ups at 5V, and the S3's GPIOs are not
+// 5 V tolerant: remove those pull-ups and fit 4.7k to 3V3, or use a BSS138
+// level shifter.
+constexpr uint8_t LCD_SDA_PIN = 8;
+constexpr uint8_t LCD_SCL_PIN = 7;
+constexpr uint32_t LCD_I2C_HZ = 100000;  // the PCF8574's rated maximum
+// Most backpacks answer at 0x27, PCF8574A ones at 0x3F; boot probes both.
+constexpr uint8_t LCD_I2C_ADDR = 0x27;
+constexpr uint8_t LCD_I2C_ADDR_ALT = 0x3F;
+constexpr uint8_t LCD_COLS = 16;
+constexpr uint8_t LCD_ROWS = 2;
+// Each character costs six expander writes (~1.5 ms at 100 kHz), so a task
+// redraws only changed cells, at most this often.
+constexpr unsigned long DISPLAY_REFRESH_MS = 100;
+constexpr unsigned long DISPLAY_SPINNER_MS = 250;
+// Lines wider than the screen scroll, after a pause on their start.
+constexpr unsigned long DISPLAY_SCROLL_STEP_MS = 350;
+constexpr unsigned long DISPLAY_SCROLL_HOLD_MS = 1000;
+constexpr size_t DISPLAY_TEXT_MAX = 160;  // a scrolling reply is cut here
+// The backlight goes off after this long on an unchanged resting screen.
+constexpr unsigned long DISPLAY_DIM_MS = 60000;
+// Beside loop() at its priority, so the screen keeps moving while loop() blocks.
+constexpr uint8_t DISPLAY_TASK_CORE = 1;
+constexpr uint8_t DISPLAY_TASK_PRIORITY = 1;
+constexpr uint32_t DISPLAY_TASK_STACK = 4096;
+// How long each notice stays over the main screen.
+constexpr unsigned long NOTICE_WAKE_MS = 1500;
+constexpr unsigned long NOTICE_AGENT_MS = 2000;
+constexpr unsigned long NOTICE_MUTE_MS = 2500;
+constexpr unsigned long NOTICE_MISSED_MS = 3000;
+constexpr unsigned long NOTICE_REPLY_MS = 4000;
+constexpr unsigned long NOTICE_WIFI_MS = 4000;
+constexpr unsigned long NOTICE_ERROR_MS = 5000;
+constexpr unsigned long NOTICE_SETUP_MS = 5000;
 
 constexpr char AP_SSID[] = "Esp32-Agent";
 constexpr char AP_PASSWORD[] = "agent-setup";

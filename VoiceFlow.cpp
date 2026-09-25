@@ -69,6 +69,7 @@ VoiceStatus VoiceFlow::status() const {
   s.reply = _reply;
   s.error = _error;
   s.recordedMs = _phase == VoicePhase::Recording ? audio.recordedMs() : _recordedMs;
+  s.missed = _phase == VoicePhase::Failed && _missed;
   return s;
 }
 
@@ -155,7 +156,7 @@ bool VoiceFlow::beginRecording(const String &agentKey, VoiceSource source, Strin
   _reply = "";
   _error = "";
   _recordedMs = 0;
-  _phase = VoicePhase::Recording;
+  setPhase(VoicePhase::Recording);
   feedback.listenLed(true);
   if (source == VoiceSource::Wake) {
     feedback.wakeChime();
@@ -224,7 +225,7 @@ void VoiceFlow::onMuteButton() {
   String error;
   if (_phase == VoicePhase::Recording) {
     audio.discardRecording();
-    _phase = VoicePhase::Idle;
+    setPhase(VoicePhase::Idle);
     _recordedMs = 0;
     Serial.println("Voice: muted, recording discarded");
     setWakeEnabled(false, error);
@@ -317,7 +318,7 @@ void VoiceFlow::checkWakeEnd() {
 // "Thank you.").
 void VoiceFlow::cancelWake(const char *why) {
   audio.discardRecording();
-  _phase = VoicePhase::Idle;
+  setPhase(VoicePhase::Idle);
   _recordedMs = 0;
   Serial.print("Voice: wake recording cancelled, ");
   Serial.println(why);
@@ -352,7 +353,7 @@ bool VoiceFlow::speakWhenDone(uint32_t chatJob, const String &agentKey, String &
   _error = "";
   _recordedMs = 0;
   _speakAt = 0;
-  _phase = VoicePhase::Waiting;
+  setPhase(VoicePhase::Waiting);
   return true;
 }
 
@@ -374,14 +375,14 @@ void VoiceFlow::finishRecording() {
   feedback.tick();
   if (_recordedMs < RECORD_MIN_MS) {
     audio.discardRecording();
-    fail("That was too short. Hold the button while you talk.");
+    fail("That was too short. Hold the button while you talk.", true, true);
     return;
   }
   sendRecording();
 }
 
 void VoiceFlow::sendRecording() {
-  _phase = VoicePhase::Transcribing;
+  setPhase(VoicePhase::Transcribing);
   feedback.follow(chatClient.phase(), true);
   Serial.print("Voice: transcribing ");
   Serial.print(audio.wavSize());
@@ -397,7 +398,7 @@ void VoiceFlow::sendRecording() {
     return;
   }
   if (!text.length()) {
-    fail("I didn't catch that. Try again a little closer to the mic.");
+    fail("I didn't catch that. Try again a little closer to the mic.", true, true);
     return;
   }
   if (_source == VoiceSource::Wake) {
@@ -410,7 +411,7 @@ void VoiceFlow::sendRecording() {
       String message = "I heard “";
       message += wakeWord.phrase();
       message += "” but nothing after it. Say it, wait for the two beeps, then speak.";
-      fail(message, false);
+      fail(message, false, true);
       feedback.cancel();
       return;
     }
@@ -428,11 +429,11 @@ void VoiceFlow::sendRecording() {
   }
   _chatJob = chatClient.status().job;
   _speakAt = 0;
-  _phase = VoicePhase::Waiting;
+  setPhase(VoicePhase::Waiting);
 }
 
 void VoiceFlow::speakReply() {
-  _phase = VoicePhase::Speaking;
+  setPhase(VoicePhase::Speaking);
   // Let the reply chime finish before the speaker starts.
   feedback.follow(chatClient.phase());
   Serial.println("Voice: speaking reply");
@@ -446,12 +447,18 @@ void VoiceFlow::speakReply() {
     Serial.print("Voice: speech failed: ");
     Serial.println(error);
   }
-  _phase = VoicePhase::Done;
+  setPhase(VoicePhase::Done);
 }
 
-void VoiceFlow::fail(const String &message, bool chime) {
+void VoiceFlow::setPhase(VoicePhase phase) {
+  _phase = phase;
+  if (_onPhase) _onPhase();
+}
+
+void VoiceFlow::fail(const String &message, bool chime, bool missed) {
   _error = message;
-  _phase = VoicePhase::Failed;
+  _missed = missed;
+  setPhase(VoicePhase::Failed);
   Serial.print("Voice: ");
   Serial.println(message);
   feedback.follow(chatClient.phase());

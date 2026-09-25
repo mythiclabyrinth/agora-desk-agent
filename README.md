@@ -42,6 +42,12 @@ use voice, a Groq and/or OpenAI key for speech.
   for Codex. A short press replays it. With one agent configured the dial just
   ticks; with none it gives the error beeps. A turn mid-recording applies to the
   next message.
+- **Status display (optional)** — a 16x2 I2C LCD shows the hands-free agent,
+  whether the wake word is listening (or muted), and the Wi-Fi address; during
+  an exchange it shows listening, thinking, waiting (with a timer) and
+  speaking, with the reply scrolling past. Short notices cover replies,
+  errors, dial turns, mute, the wake word and Wi-Fi changes. The backlight goes
+  off after a minute at rest and comes back on any activity.
 - **Voice from the browser (no extra hardware)** — the chat's mic button records
   with the browser's microphone and the speaker toggle plays replies through the
   browser. The board proxies both to the speech APIs so the keys never leave it.
@@ -60,14 +66,18 @@ ESP32-S3 dev module with 8 MB PSRAM and 16 MB flash. Pins are in `Board.h`.
 | KY-040 rotary dial | CLK 9, DT 10, SW 3, **+ → 3V3 (not 5V)**, GND → GND |
 | INMP441 microphone | SCK 12, WS 11, SD 13, L/R → GND, VDD 3V3 |
 | MAX98357A amplifier | BCLK 16, LRC 15, DIN 17, VIN 5V, 4 Ω speaker on +/− |
+| 16x2 LCD, PCF8574 I2C backpack | SDA 8, SCL 7, VCC 5V, GND |
 
 Power the KY-040 from 3V3: its pull-ups go to "+", and the ESP32-S3's GPIOs are
 not 5 V tolerant. If clockwise selects the previous agent, set `DIAL_REVERSE` in
 `Board.h`; if one click moves two agents or every other click is ignored, adjust
 `DIAL_STEPS_PER_DETENT`. The blue LED needs a small resistor (47–100 Ω) or it
 barely glows. GPIO 46 is a strapping pin: keep the mute button a plain button
-to GND, with no pull-up resistor, or uploads fail. All of this hardware is
-optional; the page works without it.
+to GND, with no pull-up resistor, or uploads fail. The LCD backpack needs 5V
+for contrast, which also puts its I2C pull-ups at 5V: remove them and fit
+4.7 kΩ from SDA and SCL to 3V3, or use a BSS138 level shifter. The board looks
+for the backpack at 0x27 and 0x3F; turn its contrast pot if the screen is lit
+but blank. All of this hardware is optional; the page works without it.
 
 ## Build and flash
 
@@ -77,6 +87,9 @@ Arduino IDE 2 with the `esp32` core 3.x. Board settings:
 - PSRAM: **OPI PSRAM** (recordings and speech buffers live there)
 - Flash Size: **16MB**
 - Partition Scheme: **16M Flash (3MB APP/9.9MB FATFS)**
+
+Library Manager: install **LiquidCrystal I2C** by Frank de Brabander (for the
+LCD; the sketch needs it to compile even without one attached).
 
 Open `Esp32Agent.ino`, compile, upload. Watch the Serial Monitor at 115200 for
 the setup-network address and, once joined, the board's IP.
@@ -140,6 +153,11 @@ Portal.*         soft-AP, captive DNS, Wi-Fi join/scan, mDNS
 WebUi.*          HTTP routes and JSON API
 ChatClient.*     post to Agora, poll for the agent's reply
 Feedback.*       LED and buzzer patterns
+Display.*        16x2 I2C LCD: drawing task, diffed redraws, notices, backlight
+StatusScreen.*   what the LCD shows: polls the desk's state, raises notices
+Screens.h        every LCD layout, as pure functions
+LcdText.h        LCD text helpers (ASCII-only, fit, align, scroll)
+Glyphs.h         custom LCD characters
 Button.*         debounced push button (talk, mute, dial switch)
 Dial.*           KY-040 rotary encoder: interrupts, detent counter, switch
 Quadrature.*     Gray-code state table that turns edges into detents
