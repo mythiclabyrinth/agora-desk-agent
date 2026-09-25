@@ -24,6 +24,9 @@ struct VoiceStatus {
   String reply;
   String error;
   unsigned long recordedMs = 0;
+  // Failed because the clip held nothing usable (too short, empty, only the
+  // wake phrase): "say it again" rather than a fault.
+  bool missed = false;
 };
 
 class VoiceFlow {
@@ -36,6 +39,9 @@ class VoiceFlow {
   // True while the mic is open or a clip is being sent; the LED stays lit.
   bool holdingLed() const;
   bool busy() const;
+  // Called on every phase change. Transcribing and Speaking block loop() as
+  // soon as they begin, so polling alone would never see them.
+  void onPhaseChange(void (*fn)()) { _onPhase = fn; }
 
   // The page's mic button: open the mic for `agentKey`, then send on stop.
   bool startFromPage(const String &agentKey, String &error);
@@ -67,10 +73,13 @@ class VoiceFlow {
   void finishRecording();
   void sendRecording();
   void speakReply();
+  void setPhase(VoicePhase phase);
   // `chime` is false when the chat phase change already played the error beeps.
-  void fail(const String &message, bool chime = true);
+  void fail(const String &message, bool chime = true, bool missed = false);
 
   VoicePhase _phase = VoicePhase::Idle;
+  void (*_onPhase)() = nullptr;
+  bool _missed = false;
   VoiceSource _source = VoiceSource::Button;
   uint32_t _job = 0;
   uint32_t _chatJob = 0;
@@ -92,6 +101,7 @@ class VoiceFlow {
   // The slower readiness checks (keys, agent, Wi-Fi), refreshed once a second.
   bool _wakeReady = false;
   unsigned long _wakeCheckedAt = 0;
+  unsigned long _wakeTracedAt = 0;
 };
 
 const char *voicePhaseName(VoicePhase phase);

@@ -31,7 +31,7 @@ VOICE = dict(keys=dict(groq=False, openai=False), stt_provider='groq', tts_provi
              tts_voices=dict(groq='autumn', openai='alloy'), accent='american', agent='claude',
              stt_ready=False, tts_ready=False, mic=True, speaker=True, button_pin=6,
              wake_enabled=False, wake_sensitivity='medium', wake_available=True, wake_phrase='Hey Jarvis',
-             wake_button_pin=7, listen_led_pin=18)
+             wake_button_pin=46, listen_led_pin=18)
 # ?scenario=voice walks the button flow: recording -> transcribing -> waiting -> speaking -> done.
 # The chat mic button drives the same steps from /api/voice/talk.
 VOICE_STEPS = [(0, 'recording'), (3, 'transcribing'), (5, 'waiting'), (9, 'speaking'), (13, 'done')]
@@ -55,7 +55,8 @@ def wake_status(armed=True, score=0.0):
     on = VOICE['wake_enabled'] and VOICE['wake_available']
     return dict(enabled=VOICE['wake_enabled'], muted=not VOICE['wake_enabled'], available=VOICE['wake_available'],
                 armed=on and armed, sensitivity=VOICE['wake_sensitivity'], phrase=VOICE['wake_phrase'],
-                score=round(score if on and armed else 0.0, 2))
+                score=round(score if on and armed else 0.0, 2),
+                peak=round(min(1.0, score * 1.5) if on and armed else 0.0, 2))
 
 
 def voice_ready():
@@ -143,7 +144,8 @@ class Handler(BaseHTTPRequestHandler):
             self.reply(dict(wifi=not offline, ssid='Studio Wi-Fi', ip='192.168.0.113', ap_ip='192.168.4.1',
                             host='esp32-agent.local', listening=bool(JOB['number'] and time.time()-JOB['started'] < 4),
                             voice=voice,
-                            agents=[dict(id=a['id'], name=a['name'], ready=agent_ready(a, scenario)) for a in AGENTS]))
+                            agents=[dict(id=a['id'], name=a['name'], ready=agent_ready(a, scenario)) for a in AGENTS],
+                            display=dict(present=True)))
         elif path == '/api/voice':
             self.reply(VOICE)
         elif path == '/api/wifi/scan':

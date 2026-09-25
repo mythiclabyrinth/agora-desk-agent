@@ -547,7 +547,7 @@ function wakePanel(v) {
     'p',
     'note',
     'The blue light on the desk is on while its microphone is listening. The mute button (GPIO ' +
-      (v.wake_button_pin ?? 7) +
+      (v.wake_button_pin ?? 46) +
       ') switches the wake word off and on; the talk button works either way.',
   );
   let on = !!v.wake_enabled;

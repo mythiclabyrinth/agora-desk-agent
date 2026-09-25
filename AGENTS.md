@@ -22,6 +22,7 @@ Two languages, one build:
 ```bash
 # firmware (Arduino IDE 2 or arduino-cli), ESP32S3 Dev Module,
 # PSRAM=OPI, Flash=16MB, Partition=16M Flash (3MB APP/9.9MB FATFS)
+# library: "LiquidCrystal I2C" (Frank de Brabander), from the Library Manager
 arduino-cli compile --fqbn esp32:esp32:esp32s3:PSRAM=opi,FlashSize=16M,PartitionScheme=app3M_fat9M_16MB .
 
 # web page
@@ -46,7 +47,7 @@ The page talks to the firmware only through the JSON API in `WebUi.cpp`:
 
 | Route | Purpose |
 | --- | --- |
-| `GET /api/status` | Wi-Fi, agents summary, voice state (polled every few seconds); `voice.agent` is the current exchange's agent, `voice.target_agent` the hands-free setting (dial) |
+| `GET /api/status` | Wi-Fi, agents summary, voice state (polled every few seconds); `voice.agent` is the current exchange's agent, `voice.target_agent` the hands-free setting (dial); `display.present` whether an LCD answered |
 | `GET /api/listen` | state of the current chat job |
 | `POST /api/chat` | `{agent, text, speak}` → starts a job |
 | `GET/POST /api/agents` | per-agent settings (token is write-only) |
@@ -64,9 +65,10 @@ Adding a field: add it to the firmware handler, the page, **and**
 
 - **C++**: one class per concern, a global singleton per module
   (`configStore`, `portal`, `chatClient`, `webUi`, `voiceFlow`, `audio`,
-  `speech`, `feedback`, `mic`, `wakeWord`, `dial`, `agentDial`), `begin()` in `setup()`, `update()`/`handle()` in
-  `loop()`. Comments explain *why*, not what. Pins and limits live in
-  `Board.h`; never hardcode a GPIO elsewhere.
+  `speech`, `feedback`, `mic`, `wakeWord`, `dial`, `agentDial`, `display`,
+  `statusScreen`), `begin()` in `setup()`, `update()`/`handle()` in `loop()`.
+  Comments explain *why*, not what. Pins and limits live in `Board.h`; never
+  hardcode a GPIO elsewhere.
 - **Errors degrade to text.** Handlers return `sendError(code, message)` with a
   sentence a person can act on; nothing panics or reboots. Voice failures leave
   the text reply intact.
@@ -110,9 +112,12 @@ Adding a field: add it to the firmware handler, the page, **and**
   is absent and the page offers the desk mic instead. Don't "fix" this in JS —
   it's a browser rule. HTTPS on the board would mean replacing `WebServer` with
   `esp_https_server`.
-- **Pins**: the usable header is fully used (GPIO 3 and 46 are strapping pins
-  and stay free), so new hardware needs a new pin plan. I2S port 0 is the mic,
-  port 1 the amp. The KY-040 is powered from 3V3, never 5V.
+- **Pins** live in `Board.h`; every header pin is taken, 8 (SDA) and 7 (SCL)
+  by the LCD's I2C bus.
+  Strapping pins 3 and 46 carry only reset-safe parts: 46 must never be pulled
+  high (it would block uploads), so it takes a bare button to GND; 3 is ignored
+  at boot. I2S port 0 is the mic, port 1 the amp. The KY-040 is powered from
+  3V3, never 5V.
 - **The dial ISR is IRAM-only.** `Dial::onEdge` and `QuadratureDecoder::step`
   are `IRAM_ATTR`, the table is `DRAM_ATTR`, pins are read with `gpio_ll`, and
   the counter sits behind a `portMUX`. Keep it that way: no `Serial`,
@@ -137,6 +142,15 @@ Adding a field: add it to the firmware handler, the page, **and**
 - **Hands-free clips without speech are never sent** (Whisper turns silence
   into "Thank you."). VAD and wake thresholds live in `Board.h`; they are
   untuned on real hardware.
+- **The LCD is presentation only.** `Display` is the only code that touches the
+  LCD or `Wire`; `StatusScreen` alone decides what it shows, by polling the
+  other modules, which never call the display. The one hook is
+  `VoiceFlow::onPhaseChange`, because Transcribing and Speaking block `loop()`
+  the moment they start. Layouts are pure functions in `Screens.h`.
+- **The LCD draws from its own task** (core 1, beside `loop()`), so the spinner
+  and a scrolling error move while `loop()` is blocked. Callers only fill a
+  framebuffer under a spinlock; the task sends changed cells only (each costs
+  ~1.5 ms of I2C). No LCD at 0x27 or 0x3F: no task, and every call is a no-op.
 - **Vendored code**: `src/microfrontend` (TFLM, see its README) links against
   the core's prebuilt `kiss_fft_fixed16`; `WakeModel.h` is generated — edit the
   model, not the header.
@@ -147,8 +161,8 @@ Adding a field: add it to the firmware handler, the page, **and**
 
 - Firmware: compile with the exact FQBN above. For pure logic (`Json.h`,
   `Speech::BodyReader`, `Wav.h`, `slugify`, `speechChunks`, `Vad`,
-  `wakePhraseEnd`, `QuadratureDecoder`, `dialPick`), a throwaway host
-  test with a tiny `String`/`millis` shim compiles under clang in seconds; keep
+  `wakePhraseEnd`, `QuadratureDecoder`, `dialPick`, `LcdText.h`,
+  `Screens.h`), a throwaway host test with a tiny `String`/`millis` shim compiles under clang in seconds; keep
   such files out of the repo or under a `tests/` folder if they become permanent.
 - Page: `python3 tools/preview.py`, then exercise the scenarios listed in
   [tools/README.md](tools/README.md). Playwright (from the sibling `agora`

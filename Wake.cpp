@@ -248,7 +248,7 @@ void WakeWord::feed(const int16_t *samples, size_t count, uint32_t endPos) {
     samples += used;
     count -= used;
     if (!out.size || !listen) continue;
-    if (featureReady(out.values, out.size)) {
+    if (featureReady(out.values, out.size, now)) {
       _detectedPos.store(endPos);
       _detected.store(true);
       _refractoryUntil = now + WAKE_REFRACTORY_MS;
@@ -259,7 +259,7 @@ void WakeWord::feed(const int16_t *samples, size_t count, uint32_t endPos) {
 }
 
 // One feature slice in; true when the smoothed probability crosses the cutoff.
-bool WakeWord::featureReady(const uint16_t *values, size_t size) {
+bool WakeWord::featureReady(const uint16_t *values, size_t size, uint32_t now) {
   TfLiteTensor *input = interpreter->input(0);
   int8_t *slot = input->data.int8 + FEATURES * _strideStep;
   for (size_t i = 0; i < static_cast<size_t>(FEATURES); i++) {
@@ -276,6 +276,10 @@ bool WakeWord::featureReady(const uint16_t *values, size_t size) {
 
   if (interpreter->Invoke() != kTfLiteOk) return false;
   uint8_t p = interpreter->output(0)->data.uint8[0];
+  if (p >= _peak.load() || now - _peakAt > WAKE_PEAK_HOLD_MS) {
+    _peak.store(p);
+    _peakAt = now;
+  }
   _probs[_probIndex] = p;
   _probIndex = (_probIndex + 1) % WAKE_MODEL_WINDOW;
 

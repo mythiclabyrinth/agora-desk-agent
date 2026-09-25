@@ -89,6 +89,7 @@ void AgentDial::playCue() {
   Cue cue = _cue;
   _cue = Cue::None;
   _spinChanged = false;
+  _cues++;
   if (cue == Cue::OnlyOne) {
     // Nothing else to switch to: one bare tick, shorter than any position cue.
     feedback.tick();

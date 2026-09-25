@@ -35,6 +35,9 @@ class WakeWord {
   bool takeDetection(uint32_t &samplePos);
   // Smoothed probability 0-1 of the phrase, for tuning in the page.
   float score() const { return _score.load() / 255.0f; }
+  // Highest single-step probability in the last WAKE_PEAK_HOLD_MS.
+  float peak() const { return _peak.load() / 255.0f; }
+  float cutoff() const { return _cutoff.load() / 255.0f; }
 
   // --- mic task side ---
   // One block of 16 kHz mono; `endPos` is the mic's sample count after it.
@@ -42,7 +45,7 @@ class WakeWord {
 
  private:
   bool loadModel();
-  bool featureReady(const uint16_t *values, size_t size);
+  bool featureReady(const uint16_t *values, size_t size, uint32_t now);
   void resetWindow();
 
   bool _ready = false;
@@ -51,11 +54,13 @@ class WakeWord {
   std::atomic<uint32_t> _holdUntil{0};
   std::atomic<uint8_t> _cutoff{0};  // probability cutoff, 0-255
   std::atomic<uint8_t> _score{0};
+  std::atomic<uint8_t> _peak{0};
   std::atomic<bool> _detected{false};
   std::atomic<uint32_t> _detectedPos{0};
 
   // Task-only state.
   uint32_t _refractoryUntil = 0;
+  uint32_t _peakAt = 0;
   uint16_t _warmup = 0;  // features to feed before a detection counts
   uint8_t _stride = 1;
   uint8_t _strideStep = 0;

@@ -17,6 +17,9 @@
 // dial cycles it through the configured agents and beeps its place (claude 1,
 // cursor 2, codex 3).
 //
+// A 16x2 I2C LCD shows the hands-free agent and whether the desk is
+// listening, each step of an exchange, and a notice for every event.
+//
 // The chat page can also use the browser's own mic and speaker; the board
 // proxies the speech APIs (/api/voice/transcribe, /api/voice/say), so keys
 // never leave it.
@@ -25,12 +28,14 @@
 //   LED (with resistor)  GPIO 5 -> LED -> GND
 //   Active buzzer        GPIO 4 -> buzzer -> GND
 //   Talk button          GPIO 6 -> button -> GND (internal pull-up)
-//   Mute button          GPIO 7 -> button -> GND (internal pull-up)
+//   Mute button          GPIO 46 -> button -> GND (internal pull-up)
 //   Blue listening LED   GPIO 18 -> 47-100 ohm -> LED -> GND
-//   KY-040 dial          CLK GPIO 9, DT GPIO 10, SW GPIO 8, + -> 3V3 (not 5V), GND
+//   KY-040 dial          CLK GPIO 9, DT GPIO 10, SW GPIO 3, + -> 3V3 (not 5V), GND
 //   INMP441 mic          SCK GPIO 12, WS GPIO 11, SD GPIO 13, L/R -> GND, VDD 3V3
 //   MAX98357A amp        BCLK GPIO 16, LRC GPIO 15, DIN GPIO 17, VIN 5V, speaker on +/-
-// Leave GPIO 0, 3, 45 and 46 alone (strapping pins), and 35-37 (octal PSRAM).
+//   16x2 LCD (PCF8574)   SDA GPIO 8, SCL GPIO 7, VCC 5V, GND (pull-ups to 3V3 only; see Board.h)
+// GPIO 0 and 45 are strapping pins and 35-37 belong to the octal PSRAM; 3 and 46
+// carry only the reset-safe parts above (see Board.h).
 //
 // Board settings: ESP32S3 Dev Module, PSRAM "OPI PSRAM" (recordings live
 // there), Flash Size 16MB, Partition Scheme "16M Flash (3MB APP/9.9MB FATFS)"
@@ -44,9 +49,11 @@
 #include "AgentDial.h"
 #include "ChatClient.h"
 #include "Config.h"
+#include "Display.h"
 #include "Feedback.h"
 #include "Mic.h"
 #include "Portal.h"
+#include "StatusScreen.h"
 #include "VoiceFlow.h"
 #include "Wake.h"
 #include "WebUi.h"
@@ -62,6 +69,9 @@ void setup() {
 
   feedback.begin();
   configStore.begin();
+  // Before the Wi-Fi join, which can take seconds, so the boot screen shows.
+  display.begin();
+  statusScreen.begin();
   portal.begin();
   // The wake engine first: the mic task starts feeding it the moment it runs.
   wakeWord.begin();
@@ -80,5 +90,6 @@ void loop() {
   // After voiceFlow, so a recording that just ended frees any held beep.
   agentDial.update();
   feedback.follow(chatClient.phase(), voiceFlow.holdingLed());
+  statusScreen.update();
   webUi.handle();
 }
