@@ -108,7 +108,20 @@ size_t Audio::play(const uint8_t *pcm, size_t len) {
   if (!_playing || !len) return 0;
   // The mic hears the speaker: keep the wake word deaf through this audio.
   wakeWord.holdOff(WAKE_QUIET_AFTER_SOUND_MS + len * 1000UL / (_playRate * _playChannels * 2));
-  return _amp.write(pcm, len);
+  if (SPEAKER_GAIN <= 1) return _amp.write(pcm, len);
+  int16_t loud[512];
+  size_t done = 0;
+  while (done < len) {
+    size_t n = min(sizeof(loud), len - done) & ~static_cast<size_t>(1);
+    const int16_t *in = reinterpret_cast<const int16_t *>(pcm + done);
+    for (size_t i = 0; i < n / 2; i++) {
+      int32_t v = static_cast<int32_t>(in[i]) * SPEAKER_GAIN;
+      loud[i] = static_cast<int16_t>(v > 32767 ? 32767 : (v < -32768 ? -32768 : v));
+    }
+    done += _amp.write(reinterpret_cast<const uint8_t *>(loud), n);
+    if (!n) break;
+  }
+  return done;
 }
 
 void Audio::stopPlayback() {

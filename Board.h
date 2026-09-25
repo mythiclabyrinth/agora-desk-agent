@@ -49,10 +49,14 @@ constexpr int8_t MIC_WS_PIN = 11;     // WS
 constexpr int8_t MIC_DATA_PIN = 13;   // SD
 
 // MAX98357A amplifier on I2S port 1, 4 ohm speaker across the output.
-// VIN 5V, GND, SD and GAIN left unconnected.
+// VIN 5V, GND, SD unconnected. GAIN unconnected is 9 dB; GAIN to GND gives
+// 12 dB and GAIN to VIN 15 dB, the cleanest way to more volume.
 constexpr int8_t AMP_BCLK_PIN = 16;   // BCLK
 constexpr int8_t AMP_LRC_PIN = 15;    // LRC
 constexpr int8_t AMP_DATA_PIN = 17;   // DIN
+// Speech from the APIs sits well under full scale; samples are multiplied
+// by this (with clipping) on the way to the amp. 1 leaves them as sent.
+constexpr int SPEAKER_GAIN = 2;
 
 // 16 kHz mono is what Whisper wants and keeps a 15 s clip under 500 KB.
 constexpr uint32_t MIC_SAMPLE_RATE = 16000;
