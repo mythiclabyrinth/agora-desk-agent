@@ -44,6 +44,16 @@ constexpr unsigned long STREAM_TIMEOUT_MS = 15000;
 constexpr size_t SYNTH_MAX_BYTES = 4u * 1024 * 1024;
 constexpr size_t SYNTH_FIRST_ALLOC = 256u * 1024;
 
+// One TTS piece on its way to the amp, for the latency log.
+struct AmpPiece {
+  uint32_t request = 0;
+  uint32_t headers = 0;
+  uint32_t firstPcm = 0;
+  uint32_t playStart = 0;
+  uint32_t lastWrite = 0;
+  size_t bytes = 0;
+};
+
 // Sink: the desk amplifier, with a head start. The first
 // SPEAKER_PREBUFFER_MS of each piece collect here before the amp starts, so
 // a pause in the stream drains this instead of the 60 ms DMA.
@@ -52,16 +62,48 @@ struct AmpSink {
   size_t cap = 0;
   size_t len = 0;
   bool started = false;
+  uint32_t bytesPerSec = 0;
+  AmpPiece piece;
+  SpeechTiming *timing = nullptr;
+  const uint32_t *pieceRequest = nullptr;
+  const uint32_t *pieceHeaders = nullptr;
 };
+void ampWrite(AmpSink *a, const uint8_t *data, size_t len) {
+  uint32_t now = millis();
+  if (!a->piece.playStart) a->piece.playStart = now;
+  if (!a->timing->playStart) a->timing->playStart = now;
+  audio.play(data, len);
+  a->piece.lastWrite = millis();
+}
 void ampFlush(AmpSink *a) {
-  if (a->len) audio.play(a->buf, a->len);
+  if (a->len) ampWrite(a, a->buf, a->len);
   a->len = 0;
   a->started = true;
+}
+// I2S writes block once the DMA is full, so a piece whose writes take longer
+// than its audio plus the head start ran dry somewhere.
+void ampEndPiece(AmpSink *a) {
+  const AmpPiece &p = a->piece;
+  if (p.bytes && a->bytesPerSec && p.playStart) {
+    long audioMs = static_cast<long>(static_cast<uint64_t>(p.bytes) * 1000 / a->bytesPerSec);
+    long wallMs = static_cast<long>(p.lastWrite - p.playStart);
+    long starved = max(0L, wallMs - audioMs - static_cast<long>(SPEAKER_PREBUFFER_MS));
+    Serial.printf("Speech: piece audio=%ld wall=%ld starved≈%ld ms (from request: headers %lu, first PCM %lu, "
+                  "playback %lu)\n",
+                  audioMs, wallMs, starved, static_cast<unsigned long>(p.headers - p.request),
+                  static_cast<unsigned long>(p.firstPcm - p.request),
+                  static_cast<unsigned long>(p.playStart - p.request));
+  }
+  a->piece = AmpPiece();
 }
 bool ampFormat(uint32_t rate, uint16_t channels, uint16_t bits, void *ctx) {
   auto *a = static_cast<AmpSink *>(ctx);
   ampFlush(a);  // the previous piece's tail plays before the format can change
+  ampEndPiece(a);
+  a->piece.request = *a->pieceRequest;
+  a->piece.headers = *a->pieceHeaders;
   if (!audio.startPlayback(rate, channels, bits)) return false;
+  a->bytesPerSec = rate * channels * (bits / 8);
   size_t want = rate * channels * (bits / 8) * SPEAKER_PREBUFFER_MS / 1000;
   if (want != a->cap) {
     free(a->buf);
@@ -73,13 +115,15 @@ bool ampFormat(uint32_t rate, uint16_t channels, uint16_t bits, void *ctx) {
 }
 bool ampPcm(const uint8_t *data, size_t len, void *ctx) {
   auto *a = static_cast<AmpSink *>(ctx);
+  if (!a->piece.firstPcm) a->piece.firstPcm = millis();
+  a->piece.bytes += len;
   if (!a->started && a->len + len < a->cap) {
     memcpy(a->buf + a->len, data, len);
     a->len += len;
     return true;
   }
   ampFlush(a);
-  audio.play(data, len);
+  ampWrite(a, data, len);
   return true;
 }
 
@@ -318,6 +362,13 @@ bool Speech::transcribe(const VoiceSettings &settings, const uint8_t *clip, size
   head += BOUNDARY;
   head += "\r\nContent-Disposition: form-data; name=\"response_format\"\r\n\r\njson\r\n--";
   head += BOUNDARY;
+  if (settings.sttLanguage.length()) {
+    // A known language skips detection, which misfires on short clips.
+    head += "\r\nContent-Disposition: form-data; name=\"language\"\r\n\r\n";
+    head += settings.sttLanguage;
+    head += "\r\n--";
+    head += BOUNDARY;
+  }
   head += "\r\nContent-Disposition: form-data; name=\"file\"; filename=\"";
   head += filename.length() ? filename : String("clip.wav");
   head += "\"\r\nContent-Type: ";
@@ -374,10 +425,18 @@ bool Speech::speak(const VoiceSettings &settings, const String &text, String &er
     error = "Speaker is not connected.";
     return false;
   }
+  _timing = SpeechTiming();
+  _pieceRequest = 0;
+  _pieceHeaders = 0;
   AmpSink amp;
+  amp.timing = &_timing;
+  amp.pieceRequest = &_pieceRequest;
+  amp.pieceHeaders = &_pieceHeaders;
   SpeechSink sink{ampFormat, ampPcm, &amp};
   bool ok = speakTo(settings, text, sink, error);
   ampFlush(&amp);
+  ampEndPiece(&amp);
+  if (_timing.playStart) _timing.playEnd = millis();
   free(amp.buf);
   audio.stopPlayback();
   return ok;
@@ -484,7 +543,11 @@ bool Speech::speakOnce(const String &provider, const String &key, const String &
   http.addHeader("Content-Type", "application/json");
   const char *wanted[] = {"Transfer-Encoding", "Content-Type"};
   http.collectHeaders(wanted, 2);
+  _pieceRequest = millis();
+  if (!_timing.request) _timing.request = _pieceRequest;
   int status = http.POST(payload);
+  _pieceHeaders = millis();
+  if (!_timing.headers) _timing.headers = _pieceHeaders;
   if (status <= 0) {
     error = "Speech failed: ";
     error += HTTPClient::errorToString(status);
@@ -587,6 +650,7 @@ bool Speech::speakOnce(const String &provider, const String &key, const String &
         size_t have = held + got;
         size_t whole = have - have % frame;
         if (have != whole) splitReads++;
+        if (whole && !_timing.firstPcm) _timing.firstPcm = millis();
         if (!logged && whole >= 16) {
           logged = true;
           Serial.print("Speech: first samples");

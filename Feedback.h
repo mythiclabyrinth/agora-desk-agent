@@ -9,6 +9,9 @@ class Feedback {
   void begin();
   // Beeps on the chat's phase changes: sent, reply landed, failed.
   void follow(Phase phase);
+  // The chat job just started will be answered aloud: its reply lands
+  // without the success notes, so the speaker starts sooner.
+  void quietNextSuccess() { _quietSuccess = true; }
   // A quick tick for the button: mic opened / mic closed.
   void tick();
   void error();
@@ -30,6 +33,7 @@ class Feedback {
   void beep(int duration);
 
   Phase _phase = Phase::Idle;
+  bool _quietSuccess = false;
   int8_t _listenLed = -1;  // unknown until the first listenLed() call
 };
 

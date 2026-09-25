@@ -28,10 +28,12 @@ use voice, a Groq and/or OpenAI key for speech.
 - **Three agents** — each with its own Agora URL, channel id, access token,
   display name and agent id (the `@mention` target).
 - **Feedback** — the buzzer chirps once when a message goes out, plays two
-  notes when the reply lands and three short beeps on failure; the LCD shows
-  the wait in between.
+  notes when the reply lands (unless the talk button or wake word asked, where
+  the spoken reply is the signal) and three short beeps on failure; the LCD
+  shows the wait in between.
 - **Voice (optional hardware)** — hold the talk button, speak, let go: the
-  INMP441 clip is transcribed (Groq Whisper or OpenAI), sent to the agent, and
+  INMP441 clip is transcribed (Groq Whisper or OpenAI, in the language set under
+  Settings › Voice or auto-detected), sent to the agent, and
   the reply is read aloud through a MAX98357A speaker (Groq Orpheus or OpenAI
   TTS). Provider, model, voice and accent are picked per direction under
   Settings › Voice.
@@ -101,7 +103,8 @@ Arduino IDE 2 with the `esp32` core 3.x. Board settings:
 - Partition Scheme: **16M Flash (3MB APP/9.9MB FATFS)**
 
 Library Manager: install **LiquidCrystal I2C** by Frank de Brabander (for the
-LCD; the sketch needs it to compile even without one attached).
+LCD; the sketch needs it to compile even without one attached) and
+**WebSockets** by Markus Sattler (2.7.x; the reply arrives over Agora's socket).
 
 Open `Esp32Agent.ino`, compile, upload. Watch the Serial Monitor at 115200 for
 the setup-network address and, once joined, the board's IP.
@@ -153,7 +156,9 @@ A page change always means a reflash. Details in [tools/README.md](tools/README.
 Settings — Wi-Fi password, Agora tokens, speech keys — are stored in the board's
 NVS flash, unencrypted, and the board's local HTTP API has no login. Keys are
 write-only (never sent back to the page) and Agora tokens are dropped from RAM
-after each exchange, but anyone with physical access or on the same Wi-Fi should
+after each exchange. The reply socket carries the token in its URL
+(`/ws?token=`, as Agora's own page does), so a proxy in front of Agora may log
+it. Anyone with physical access or on the same Wi-Fi should
 be treated as trusted. Use a dedicated Agora token you can revoke rather than an
 admin key, and consider ESP32 flash encryption if the device leaves your desk.
 
@@ -165,7 +170,9 @@ Board.h          pins and limits
 Config.*         NVS-backed settings (Wi-Fi, agents, voice)
 Portal.*         soft-AP, captive DNS, Wi-Fi join/scan, mDNS
 WebUi.*          HTTP routes and JSON API
-ChatClient.*     post to Agora, poll for the agent's reply
+ChatClient.*     post to Agora, wait for the agent's reply (socket, else polling)
+AgoraSocket.*    Agora's UI WebSocket: pushes the reply the moment it lands
+ReplyWatch.h     which message answers a chat job (poll and socket)
 Feedback.*       buzzer patterns and the listening LED
 Display.*        16x2 I2C LCD: drawing task, diffed redraws, notices, backlight
 StatusScreen.*   what the LCD shows: polls the desk's state, raises notices
@@ -185,6 +192,7 @@ Audio.*          recordings (from the mic ring) and speaker playback
 Speech.*         Groq / OpenAI transcription and text-to-speech
 VoiceFlow.*      push-to-talk / wake-word state machine, mute, listening LED
 Json.h, Wav.h    tiny parsers/writers
+VoiceTrace.h     per-exchange latency stamps, printed as one serial line
 Page.h           GENERATED gzipped web page
 web/             page source + build.py
 src/microfrontend vendored TFLM audio microfrontend (Apache-2.0)

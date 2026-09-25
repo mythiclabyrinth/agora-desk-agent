@@ -6,7 +6,9 @@
 #include <WiFiClientSecure.h>
 
 #include <ctype.h>
+#include <esp_heap_caps.h>
 
+#include "AgoraSocket.h"
 #include "Board.h"
 #include "Json.h"
 
@@ -37,16 +39,10 @@ String slugify(const String &name) {
   return out;
 }
 
-bool sameAgent(const JsonMessage &message, const AgentSettings &agent) {
-  if (message.authorType != "agent") return false;
-  if (agent.agentId.length()) return message.authorId.equalsIgnoreCase(agent.agentId);
-  return message.authorName.equalsIgnoreCase(agent.name);
-}
-
 void considerReply(const JsonMessage &message, void *ctx) {
   auto *pick = static_cast<ReplyPick *>(ctx);
   if (!message.hasId || message.id <= pick->afterId) return;
-  if (!sameAgent(message, *pick->agent)) return;
+  if (!replyFromAgent(message, pick->agent->agentId, pick->agent->name)) return;
   // The first reply after our message, not a later follow-up that landed
   // in the same poll.
   if (pick->found && message.id >= pick->bestId) return;
@@ -113,9 +109,18 @@ bool ChatClient::start(const String &agentKey, const AgentSettings &agent, const
   _posted = false;
   _started = millis();
   _nextPoll = 0;
+  _postStart = 0;
+  _postDone = 0;
+  _replySeen = 0;
+  _watch.arm(_job, agent.channel, agent.agentId, agent.name);
   _phase = Phase::Listening;
   Serial.print("Listening for ");
   Serial.println(agent.name);
+  // The link connects from agoraSocket.update(), which loop() runs after
+  // this client's update(), so a handshake never holds up the POST.
+  agoraSocket.onMessage(onSocketMessage, this);
+  agoraSocket.open(_agent);
+  _seenSession = agoraSocket.sessions();
   return true;
 }
 
@@ -133,9 +138,30 @@ void ChatClient::update() {
     postMessage();
     return;
   }
-  if (millis() < _nextPoll) return;
+  if (agoraSocket.connected()) {
+    // A link that came up after the POST may have missed the reply: read once,
+    // then only the slow safety read.
+    if (agoraSocket.sessions() != _seenSession) {
+      _seenSession = agoraSocket.sessions();
+      _nextPoll = millis() + LISTEN_SAFETY_POLL_MS;
+      pollReply();
+    } else if (static_cast<long>(millis() - _nextPoll) >= 0) {
+      _nextPoll = millis() + LISTEN_SAFETY_POLL_MS;
+      pollReply();
+    }
+    return;
+  }
+  agoraSocket.open(_agent);
+  if (static_cast<long>(millis() - _nextPoll) < 0) return;
   _nextPoll = millis() + LISTEN_POLL_MS;
   pollReply();
+}
+
+void ChatClient::onSocketMessage(const JsonMessage &message, const String &channelId, void *ctx) {
+  auto *self = static_cast<ChatClient *>(ctx);
+  if (self->_phase != Phase::Listening || !self->_watch.accepts(self->_job, message, channelId)) return;
+  self->succeed(message.hasText && message.text.length() ? message.text : String("(The agent replied without text.)"),
+                "socket");
 }
 
 Phase ChatClient::phase() const {
@@ -152,6 +178,9 @@ ListenStatus ChatClient::status() const {
   current.error = _error;
   current.waitedMs = _started ? millis() - _started : 0;
   current.agentKey = _agentKey;
+  current.postStart = _postStart;
+  current.postDone = _postDone;
+  current.replySeen = _replySeen;
   return current;
 }
 
@@ -176,21 +205,26 @@ void ChatClient::forgetToken() {
   _agent.token = "";
 }
 
-void ChatClient::succeed(const String &reply) {
+void ChatClient::succeed(const String &reply, const char *via) {
+  _replySeen = millis();
   _reply = reply;
   if (_reply.length() > MAX_REPLY_CHARS) {
     _reply.remove(MAX_REPLY_CHARS);
     _reply += "\n\n[truncated]";
   }
   _phase = Phase::Done;
+  _watch.clear();
+  agoraSocket.close();
   forgetToken();
-  Serial.print("Reply from ");
-  Serial.println(_agent.name);
+  Serial.printf("Reply from %s via %s (free internal heap %u)\n", _agent.name.c_str(), via,
+                static_cast<unsigned>(heap_caps_get_free_size(MALLOC_CAP_INTERNAL)));
 }
 
 void ChatClient::fail(const String &message) {
   _error = message;
   _phase = Phase::Failed;
+  _watch.clear();
+  agoraSocket.close();
   forgetToken();
   Serial.println(message);
 }
@@ -273,7 +307,9 @@ void ChatClient::postMessage() {
   String payload = "{\"text\":\"";
   payload += jsonEscape(mentionText());
   payload += "\"}";
+  _postStart = millis();
   HttpResponse response = exchange(_agent.token, true, endpoint(), payload);
+  _postDone = millis();
   if (response.status < 200 || response.status >= 300) {
     String message = "Agora rejected the message";
     if (response.status > 0) {
@@ -297,7 +333,10 @@ void ChatClient::postMessage() {
     return;
   }
   _posted = true;
-  _nextPoll = millis() + 1000;
+  _watch.afterId = _sentId;
+  // A link already up saw everything since the POST; only a later one needs a catch-up read.
+  if (agoraSocket.connected()) _seenSession = agoraSocket.sessions();
+  _nextPoll = millis() + LISTEN_POLL_MS;
   Serial.print("Posted ");
   Serial.println((long)_sentId);
 }
@@ -321,5 +360,5 @@ void ChatClient::pollReply() {
   if (!jsonEachMessage(response.body, considerReply, &pick) || !pick.found) return;
 
   if (!pick.text.length()) pick.text = "(The agent replied without text.)";
-  succeed(pick.text);
+  succeed(pick.text, "poll");
 }

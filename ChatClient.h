@@ -5,6 +5,8 @@
 
 #include "Config.h"
 #include "Feedback.h"
+#include "Json.h"
+#include "ReplyWatch.h"
 
 struct ListenStatus {
   Phase phase = Phase::Idle;
@@ -15,6 +17,10 @@ struct ListenStatus {
   String reply;
   String error;
   unsigned long waitedMs = 0;
+  // millis() stamps for the latency trace, 0 until reached.
+  uint32_t postStart = 0;
+  uint32_t postDone = 0;
+  uint32_t replySeen = 0;
 };
 
 struct HttpResponse {
@@ -42,7 +48,8 @@ class ChatClient {
  private:
   void postMessage();
   void pollReply();
-  void succeed(const String &reply);
+  static void onSocketMessage(const JsonMessage &message, const String &channelId, void *ctx);
+  void succeed(const String &reply, const char *via);
   void fail(const String &message);
   HttpResponse exchange(const String &token, bool post, const String &url, const String &payload,
                         size_t maxBody = 0);
@@ -63,6 +70,13 @@ class ChatClient {
   bool _posted = false;
   unsigned long _started = 0;
   unsigned long _nextPoll = 0;
+  uint32_t _postStart = 0;
+  uint32_t _postDone = 0;
+  uint32_t _replySeen = 0;
+  // The reply arrives on Agora's socket while it is up; REST polls cover
+  // the gaps, plus one catch-up read per (re)connect after the POST.
+  ReplyWatch _watch;
+  uint32_t _seenSession = 0;
 };
 
 extern ChatClient chatClient;

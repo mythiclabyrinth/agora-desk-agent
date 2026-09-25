@@ -29,6 +29,7 @@ constexpr char DEFAULT_GROQ_VOICE[] = "autumn";
 constexpr char GROQ_ARABIC_VOICE[] = "noura";
 constexpr char DEFAULT_OPENAI_VOICE[] = "alloy";
 constexpr char DEFAULT_ACCENT[] = "american";
+constexpr char DEFAULT_STT_LANGUAGE[] = "en";
 constexpr char DEFAULT_VOICE_AGENT[] = "claude";
 
 String orDefault(const String &value, const char *fallback) {
@@ -148,6 +149,16 @@ bool voiceAccentKnown(const String &accent) {
   return accent == "american" || accent == "british" || accent == "arabic";
 }
 
+bool voiceLanguageValid(const String &language) {
+  if (!language.length()) return true;
+  if (language.length() < 2 || language.length() > 8) return false;
+  for (unsigned i = 0; i < language.length(); i++) {
+    char c = language[i];
+    if (!isalpha(static_cast<unsigned char>(c)) && c != '-') return false;
+  }
+  return true;
+}
+
 const String &VoiceSettings::keyFor(const String &provider) const {
   return provider == VOICE_OPENAI ? openaiKey : groqKey;
 }
@@ -192,10 +203,13 @@ VoiceSettings ConfigStore::voice() {
   s.voiceGroq = orDefault(_prefs.getString("v_vc_g", ""), DEFAULT_GROQ_VOICE);
   s.voiceOpenai = orDefault(_prefs.getString("v_vc_o", ""), DEFAULT_OPENAI_VOICE);
   s.accent = orDefault(_prefs.getString("v_acc", ""), DEFAULT_ACCENT);
+  // Saved empty means auto-detect, so only a missing key takes the default.
+  s.sttLanguage = _prefs.isKey("v_lang") ? _prefs.getString("v_lang", "") : String(DEFAULT_STT_LANGUAGE);
   s.agentKey = _voiceAgent;
   if (!voiceProviderKnown(s.sttProvider)) s.sttProvider = VOICE_GROQ;
   if (!voiceProviderKnown(s.ttsProvider)) s.ttsProvider = VOICE_GROQ;
   if (!voiceAccentKnown(s.accent)) s.accent = DEFAULT_ACCENT;
+  if (!voiceLanguageValid(s.sttLanguage)) s.sttLanguage = DEFAULT_STT_LANGUAGE;
   return s;
 }
 
@@ -209,6 +223,7 @@ void ConfigStore::saveVoiceFeatures(const VoiceSettings &in) {
   _prefs.putString("v_vc_g", orDefault(in.voiceGroq, DEFAULT_GROQ_VOICE).c_str());
   _prefs.putString("v_vc_o", orDefault(in.voiceOpenai, DEFAULT_OPENAI_VOICE).c_str());
   _prefs.putString("v_acc", voiceAccentKnown(in.accent) ? in.accent.c_str() : DEFAULT_ACCENT);
+  _prefs.putString("v_lang", voiceLanguageValid(in.sttLanguage) ? in.sttLanguage.c_str() : DEFAULT_STT_LANGUAGE);
   saveVoiceAgent(parseAgent(in.agentKey) == AgentKind::Unknown ? String(DEFAULT_VOICE_AGENT) : in.agentKey);
 }
 

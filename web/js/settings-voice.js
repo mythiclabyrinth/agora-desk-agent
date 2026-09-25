@@ -249,7 +249,14 @@ async function renderVoice() {
   );
   const sttModel = selectField('Model', VOICE_CATALOG.stt[v.stt_provider], v.stt_models[v.stt_provider]);
   const sttHint = el('p', 'note');
-  stt.append(sttProvider.wrap, advancedModel(sttModel.wrap), sttHint);
+  const sttLanguage = field('Language', v.stt_language, {
+    max: 8,
+    placeholder: 'en',
+    pattern: '[A-Za-z\\-]{2,8}',
+    help: 'ISO code such as en; leave empty to auto-detect.',
+  });
+  sttLanguage.input.spellcheck = false;
+  stt.append(sttProvider.wrap, sttLanguage.wrap, advancedModel(sttModel.wrap), sttHint);
   const tts = panel(
     'Spoken replies',
     'Choose how your agent sounds. Turn on the speaker in a conversation to hear replies aloud.',
@@ -389,6 +396,8 @@ async function renderVoice() {
         voice_groq: v.tts_voices.groq,
         voice_openai: v.tts_voices.openai,
         accent: accent.select.value,
+        // The last valid entry, so a half-typed code never blocks saving another picker.
+        stt_language: v.stt_language || '',
       };
       if (pickedAgent) body.agent = agentSel.select.value;
       try {
@@ -421,6 +430,11 @@ async function renderVoice() {
   });
   sttModel.select.addEventListener('change', () => {
     v.stt_models[sttProvider.select.value] = sttModel.select.value;
+    saveFeatures();
+  });
+  sttLanguage.input.addEventListener('change', () => {
+    if (!sttLanguage.input.reportValidity()) return;
+    v.stt_language = sttLanguage.input.value.trim();
     saveFeatures();
   });
   ttsProvider.select.addEventListener('change', () => {

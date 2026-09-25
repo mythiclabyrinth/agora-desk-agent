@@ -38,6 +38,9 @@
 // Free: GPIO 5 and GPIO 46. 46 is a strapping pin: a bare button to GND is
 // safe there, a part with a pull-up is not (see Board.h).
 //
+// Libraries: "LiquidCrystal I2C" (Frank de Brabander) and "WebSockets"
+// (Markus Sattler), both from the Library Manager.
+//
 // Board settings: ESP32S3 Dev Module, PSRAM "OPI PSRAM" (recordings live
 // there), Flash Size 16MB, Partition Scheme "16M Flash (3MB APP/9.9MB FATFS)"
 // (the sketch does not fit the default 1.3 MB app slot).
@@ -48,6 +51,7 @@
 // Open http://192.168.4.1 — once Wi-Fi joins, also http://esp32-agent.local.
 
 #include "AgentDial.h"
+#include "AgoraSocket.h"
 #include "ChatClient.h"
 #include "Config.h"
 #include "Display.h"
@@ -87,6 +91,9 @@ void setup() {
 void loop() {
   portal.update();
   chatClient.update();
+  // After chatClient, so a job's POST goes out before any handshake; before
+  // voiceFlow, so a reply that lands on the socket is spoken this pass.
+  agoraSocket.update();
   voiceFlow.update();
   // After voiceFlow, so a recording that just ended frees any held beep.
   agentDial.update();

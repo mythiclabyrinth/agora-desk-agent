@@ -33,6 +33,8 @@ struct VoiceSettings {
   String voiceGroq;
   String voiceOpenai;
   String accent;    // american | british | arabic
+  // Spoken language for transcription (ISO-639-1, "en"); empty auto-detects.
+  String sttLanguage;
   // The hands-free agent (claude, cursor, codex): what the talk button, the
   // wake word and the dial reach. From ConfigStore::voiceAgent().
   String agentKey;
@@ -50,6 +52,8 @@ struct VoiceSettings {
 
 bool voiceProviderKnown(const String &provider);
 bool voiceAccentKnown(const String &accent);
+// Empty, or 2-8 letters and dashes.
+bool voiceLanguageValid(const String &language);
 
 // Wake-word listening. `enabled` is the single source of truth: the dial's
 // long press and the page both flip it, and the blue LED follows it.

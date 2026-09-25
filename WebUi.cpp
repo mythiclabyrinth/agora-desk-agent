@@ -1,5 +1,6 @@
 #include "WebUi.h"
 
+#include "AgoraSocket.h"
 #include "Board.h"
 #include "ChatClient.h"
 #include "Config.h"
@@ -416,6 +417,8 @@ void WebUi::handleAgentsPost() {
     sendError(400, "Access token is required the first time you save this agent.");
     return;
   }
+  // The open link used the settings this save replaces; a listening job reopens it.
+  agoraSocket.close();
 
   AgentSettings saved = configStore.agent(kind);
   String response = "{\"ok\":true,\"ready\":";
@@ -548,6 +551,8 @@ void WebUi::handleVoiceGet() {
   body += jsonEscape(v.voiceOpenai);
   body += "\"},\"accent\":\"";
   body += jsonEscape(v.accent);
+  body += "\",\"stt_language\":\"";
+  body += jsonEscape(v.sttLanguage);
   body += "\",\"agent\":\"";
   body += jsonEscape(v.agentKey);
   body += "\",\"stt_ready\":";
@@ -623,7 +628,7 @@ void WebUi::handleVoiceWake() {
   sendJson(200, response);
 }
 
-// Features: providers, models, voices, accent, and the hands-free agent. Keys
+// Features: providers, models, voices, accent, STT language, and the hands-free agent. Keys
 // are a separate call so this form never carries a secret. Every field is
 // optional; the page sends "agent" only when the user picked one, so saving
 // an accent never undoes a turn of the dial.
@@ -643,6 +648,7 @@ void WebUi::handleVoicePost() {
       {"tts_model_groq", &in.ttsModelGroq},  {"tts_model_openai", &in.ttsModelOpenai},
       {"voice_groq", &in.voiceGroq},         {"voice_openai", &in.voiceOpenai},
       {"accent", &in.accent},                {"agent", &in.agentKey},
+      {"stt_language", &in.sttLanguage},
   };
   for (Field &f : fields) {
     String value;
@@ -666,6 +672,11 @@ void WebUi::handleVoicePost() {
   }
   if (!voiceAccentKnown(in.accent)) {
     sendError(400, "Accent must be american, british, or arabic.");
+    return;
+  }
+  in.sttLanguage.toLowerCase();
+  if (!voiceLanguageValid(in.sttLanguage)) {
+    sendError(400, "Language must be an ISO code such as en, or empty to auto-detect.");
     return;
   }
   if (ConfigStore::parseAgent(in.agentKey) == AgentKind::Unknown) {
