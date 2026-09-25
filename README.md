@@ -45,8 +45,7 @@ use voice, a Groq and/or OpenAI key for speech.
 - **Status display (optional)** — a 16x2 I2C LCD shows the hands-free agent,
   whether the wake word is listening (or muted), and the Wi-Fi address; during
   an exchange it shows listening, thinking, waiting (with a timer) and
-  speaking, with the reply scrolling past. Short notices cover replies,
-  errors, dial turns, mute, the wake word and Wi-Fi changes. The backlight goes
+  speaking. Short notices cover replies landing, errors, dial turns, mute, the wake word and Wi-Fi changes. The backlight goes
   off after a minute at rest and comes back on any activity.
 - **Voice from the browser (no extra hardware)** — the chat's mic button records
   with the browser's microphone and the speaker toggle plays replies through the

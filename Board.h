@@ -129,7 +129,7 @@ constexpr unsigned long DISPLAY_SPINNER_MS = 250;
 // Lines wider than the screen scroll, after a pause on their start.
 constexpr unsigned long DISPLAY_SCROLL_STEP_MS = 350;
 constexpr unsigned long DISPLAY_SCROLL_HOLD_MS = 1000;
-constexpr size_t DISPLAY_TEXT_MAX = 160;  // a scrolling reply is cut here
+constexpr size_t DISPLAY_TEXT_MAX = 160;  // a scrolling error is cut here
 // The backlight goes off after this long on an unchanged resting screen.
 constexpr unsigned long DISPLAY_DIM_MS = 60000;
 // Beside loop() at its priority, so the screen keeps moving while loop() blocks.

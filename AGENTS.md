@@ -148,7 +148,7 @@ Adding a field: add it to the firmware handler, the page, **and**
   `VoiceFlow::onPhaseChange`, because Transcribing and Speaking block `loop()`
   the moment they start. Layouts are pure functions in `Screens.h`.
 - **The LCD draws from its own task** (core 1, beside `loop()`), so the spinner
-  and the scrolling reply move while `loop()` is blocked. Callers only fill a
+  and a scrolling error move while `loop()` is blocked. Callers only fill a
   framebuffer under a spinlock; the task sends changed cells only (each costs
   ~1.5 ms of I2C). No LCD at 0x27 or 0x3F: no task, and every call is a no-op.
 - **Vendored code**: `src/microfrontend` (TFLM, see its README) links against

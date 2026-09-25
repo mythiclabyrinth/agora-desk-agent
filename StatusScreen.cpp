@@ -88,7 +88,7 @@ bool StatusScreen::checkChat(unsigned long now) {
   // A voice exchange announces its own ending, after the reply is spoken.
   if (_voicePhase == VoicePhase::Waiting) return true;
   ListenStatus chat = chatClient.status();
-  if (phase == Phase::Done) notify(replyNotice(_chatAgent, chat.reply), NOTICE_REPLY_MS);
+  if (phase == Phase::Done) notify(replyNotice(_chatAgent), NOTICE_REPLY_MS);
   else if (phase == Phase::Failed) notify(errorNotice(chat.error), NOTICE_ERROR_MS);
   return true;
 }
@@ -99,11 +99,8 @@ bool StatusScreen::checkVoice() {
   _voicePhase = phase;
   if (phase == VoicePhase::Recording) {
     if (voiceFlow.status().source == VoiceSource::Wake) notify(wakeNotice(wakeWord.phrase()), NOTICE_WAKE_MS);
-  } else if (phase == VoicePhase::Speaking) {
-    _reply = lcdText(voiceFlow.status().reply, DISPLAY_TEXT_MAX);
   } else if (phase == VoicePhase::Done) {
-    VoiceStatus s = voiceFlow.status();
-    notify(replyNotice(titleOf(s.agentKey), s.reply), NOTICE_REPLY_MS);
+    notify(replyNotice(titleOf(voiceFlow.status().agentKey)), NOTICE_REPLY_MS);
   } else if (phase == VoicePhase::Failed) {
     VoiceStatus s = voiceFlow.status();
     if (s.missed) notify(missedNotice(), NOTICE_MISSED_MS);
@@ -164,7 +161,6 @@ void StatusScreen::showMain(unsigned long now) {
       break;
     case VoicePhase::Speaking:
       v.activity = DeskActivity::Speaking;
-      v.reply = _reply;
       break;
     default:
       // A voice exchange waits on the same chat job as a typed message.

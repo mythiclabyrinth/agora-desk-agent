@@ -6,8 +6,8 @@
 
 // The 16x2 LCD, and the only code that touches it or the I2C bus. Pure
 // presentation: callers say what to show, a task beside loop() draws it,
-// so the spinner and scrolling text keep moving while loop() is blocked in
-// speech or HTTP calls. Lines wider than the screen scroll; character codes
+// so the spinner and a scrolling error keep moving while loop() is blocked
+// in speech or HTTP calls. Lines wider than the screen scroll; character codes
 // 8-15 are glyphs (Glyphs.h). With no LCD on the bus every call is a no-op.
 class Display {
  public:

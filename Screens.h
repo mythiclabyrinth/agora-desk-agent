@@ -7,8 +7,8 @@
 #include "LcdText.h"
 
 // What each screen says, as pure functions of the desk's state, so a host
-// test covers every layout. Lines are exactly LCD_COLS wide, except a line
-// meant to scroll (a reply, an error), which is longer.
+// test covers every layout. Lines are exactly LCD_COLS wide, except an error
+// meant to scroll, which is longer.
 
 enum class DeskActivity : uint8_t { None, Recording, Thinking, Waiting, Speaking };
 
@@ -25,8 +25,7 @@ struct DeskView {
   DeskActivity activity = DeskActivity::None;
   const char *source = "";         // Recording: btn | wake | page
   unsigned long elapsedMs = 0;     // Recording: clip length; Waiting: time waited
-  const char *activityAgent = "";  // Waiting: the agent asked
-  String reply;                    // Speaking: lcdText of the reply
+  const char *activityAgent = "";  // Waiting, Speaking: the agent asked
 };
 
 struct ScreenLines {
@@ -90,11 +89,8 @@ inline ScreenLines mainScreen(const DeskView &v) {
     case DeskActivity::Waiting:
       return screenLines(glyphText(GLYPH_CLOCK, "Waiting..."),
                          alignEnds(v.activityAgent, clockText(v.elapsedMs), LCD_COLS));
-    case DeskActivity::Speaking: {
-      String bottom = v.reply.length() ? v.reply : String(v.activityAgent);
-      if (bottom.length() < LCD_COLS) bottom = fitText(bottom, LCD_COLS);
-      return screenLines(glyphText(GLYPH_SPEAKER, "Speaking"), bottom);
-    }
+    case DeskActivity::Speaking:
+      return screenLines(glyphText(GLYPH_SPEAKER, "Speaking"), fitText(v.activityAgent, LCD_COLS));
     default:
       return restingScreen(v);
   }
@@ -134,11 +130,11 @@ inline ScreenLines missedNotice() {
   return screenLines(glyphText(GLYPH_ALERT, "Didn't catch"), fitText("that - try again", LCD_COLS));
 }
 
-// `reply` is raw; only its start shows.
-inline ScreenLines replyNotice(const char *agent, const String &reply) {
+// The reply itself is on the page and the speaker; 16 columns cannot carry it.
+inline ScreenLines replyNotice(const char *agent) {
   String top = agent;
   top += " replied";
-  return screenLines(glyphText(GLYPH_CHECK, top.c_str()), fitText(lcdText(reply, LCD_COLS), LCD_COLS));
+  return screenLines(glyphText(GLYPH_CHECK, top.c_str()), fitText("", LCD_COLS));
 }
 
 // The message scrolls when it is longer than the screen.

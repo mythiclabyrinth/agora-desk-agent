@@ -33,7 +33,6 @@ class StatusScreen {
   Phase _chatPhase = Phase::Idle;
   const char *_chatAgent = "";
   unsigned long _waitSince = 0;
-  String _reply;  // the reply being spoken, ready for the LCD
   bool _wakeOn = false;
   String _agent;
   uint32_t _cues = 0;
