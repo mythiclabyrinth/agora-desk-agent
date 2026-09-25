@@ -82,9 +82,11 @@ bool validModel(const String &value, size_t maxLen) {
 
 const AgentKind kKinds[] = {AgentKind::Claude, AgentKind::Cursor, AgentKind::Codex};
 
+// Only the channels the agent belongs to: the picker is for choosing where
+// to reach it, and Agora lists the rest with member=false.
 void appendChannel(const JsonItem &item, void *ctx) {
   auto *out = static_cast<String *>(ctx);
-  if (!item.id.length()) return;
+  if (!item.id.length() || !item.member) return;
   if (!out->endsWith("[")) *out += ',';
   *out += "{\"id\":\"";
   *out += jsonEscape(item.id);
@@ -94,9 +96,7 @@ void appendChannel(const JsonItem &item, void *ctx) {
   *out += jsonEscape(item.group);
   *out += "\",\"kind\":\"";
   *out += jsonEscape(item.kind);
-  *out += "\",\"member\":";
-  *out += item.member ? "true" : "false";
-  *out += '}';
+  *out += "\"}";
 }
 
 }  // namespace

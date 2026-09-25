@@ -278,7 +278,7 @@ class Handler(BaseHTTPRequestHandler):
         members = CHANNEL_MEMBERS[key]
         name = data.get('name') or a['name']
         self.reply({'ok':True, 'agent':dict(id=data.get('agent_id') or a['agent_id'], name=name, live=key == 'claude'),
-                    'channels':[dict(c, member=c['id'] in members) for c in CHANNELS]})
+                    'channels':[c for c in CHANNELS if c['id'] in members]})
 
 if __name__ == '__main__':
     print('Isolated Desk agent preview: http://127.0.0.1:8765', flush=True)

@@ -51,7 +51,7 @@ The page talks to the firmware only through the JSON API in `WebUi.cpp`:
 | `GET /api/listen` | state of the current chat job |
 | `POST /api/chat` | `{agent, text, speak}` → starts a job |
 | `GET/POST /api/agents` | per-agent settings (token is write-only) |
-| `POST /api/agents/{claude\|cursor\|codex}/channels` | `{url?, agent_id?, name?, token?}` (empty → saved value) → Agora's `GET /api/agents/{id}/channels` → `{agent: {id, name, live}, channels: [{id, name, group, kind, member}]}`; upstream failures are 502 with a sentence |
+| `POST /api/agents/{claude\|cursor\|codex}/channels` | `{url?, agent_id?, name?, token?}` (empty → saved value) → Agora's `GET /api/agents/{id}/channels` → `{agent: {id, name, live}, channels: [{id, name, group, kind}]}`, only the channels the agent belongs to; upstream failures are 502 with a sentence |
 | `POST /api/wifi`, `GET /api/wifi/scan` | join / scan |
 | `GET/POST /api/voice`, `POST /api/voice/keys`, `POST /api/voice/test` | voice settings; keys write-only; POST fields are optional and the page sends `agent` only when picked, so it never undoes a dial turn |
 | `POST /api/voice/talk` | `{action: start\|stop, agent}` drives the board mic from the page |

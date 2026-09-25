@@ -68,24 +68,18 @@ function channelPicker(agent, form) {
       groups.get(group).push(c);
     });
     select.replaceChildren();
-    let firstMember = '';
     groups.forEach((list, group) => {
       const og = el('optgroup');
       og.label = group;
-      [...list.filter((c) => c.member), ...list.filter((c) => !c.member)].forEach((c) => {
-        const text =
-          (c.kind === 'agent_dm' ? c.name || c.id : '#' + (c.name || c.id)) +
-          (c.member ? ' · ' + who + ' is here' : '');
-        og.append(channelOption(c.id, text));
-        if (c.member && !firstMember) firstMember = c.id;
-      });
+      list.forEach((c) =>
+        og.append(channelOption(c.id, c.kind === 'agent_dm' ? c.name || c.id : '#' + (c.name || c.id))),
+      );
       select.append(og);
     });
     if (keep && !data.channels.some((c) => c.id === keep))
       select.prepend(channelOption(keep, keep + ' (saved)'));
-    const pick = keep || firstMember;
-    if (!pick)
-      select.prepend(channelOption('', data.channels.length ? 'Choose a channel' : 'No channels yet'));
+    const pick = keep || (data.channels[0] && data.channels[0].id) || '';
+    if (!pick) select.prepend(channelOption('', 'No channels yet'));
     select.value = pick;
     return who;
   }
