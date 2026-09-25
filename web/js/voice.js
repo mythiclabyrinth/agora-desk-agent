@@ -37,7 +37,7 @@ const micSupported = !!(
   window.MediaRecorder
 );
 const micBlockedWhy =
-  'This browser cannot use its microphone on this page. Choose Desk device in Settings › Voice › Speech & audio to use the desk microphone.';
+  'This browser cannot use its microphone on this page. Choose Desk device in Settings › Voice › Devices to use the desk microphone.';
 function setAudioMode(mode) {
   audioMode = mode === 'desk' ? 'desk' : 'browser';
   storage.set('localStorage', 'desk-audio', audioMode);

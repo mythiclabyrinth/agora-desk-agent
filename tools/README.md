@@ -12,8 +12,9 @@ nothing is forwarded to a board, and demo saves last only until the process stop
 - `/?scenario=voice`: watch a talk-button conversation land in the chat.
 - `/?scenario=wake`: wake listening switches on, the score meter climbs, “Hey Jarvis” is
   heard, the VAD ends the clip, and the exchange lands in the chat with the “Heard …” banner.
-  Settings › Voice › Speech & audio shows the Wake word section (toggle = the desk's mute
-  button, sensitivity, live score).
+  Settings › Voice › Devices shows the Wake word section (toggle = the desk's mute
+  button, sensitivity, live score) alongside the status checks, chat page audio and the
+  talk button's agent. Speech & voice holds only speech-to-text and text-to-speech.
 - Wi-Fi scanning and joining use demo data only.
 - Send a message containing `preview-error` to simulate a failed send.
 - Other messages receive an explicitly labeled demo response after four seconds.

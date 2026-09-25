@@ -2006,9 +2006,6 @@ body:has(#wifi-dialog[open]) {
   font-size: 12px;
   line-height: 1.65;
 }
-.voice-meta {
-  grid-template-columns: 1fr 1fr;
-}
 .voice-save {
   display: flex;
   align-items: center;
@@ -2056,7 +2053,7 @@ select:focus-visible {
     padding: 10px;
   }
   .voice-meta {
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: 1fr;
   }
   .key-input {
     flex-wrap: wrap;
