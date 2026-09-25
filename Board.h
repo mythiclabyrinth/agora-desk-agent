@@ -4,7 +4,9 @@
 
 // ESP32-S3 header on this board, top to bottom beside the USB socket:
 // GND, 5V, 13, 12, 11, 10, 9, 46, 3, 8, 18, 17, 16, 15, 7, 6, 5, 4, RST, 3V3.
-// Every usable pin is taken; 3 and 46 are strapping pins and stay free.
+// GPIO 7 and 8 are free. 3 and 46 are strapping pins, so only parts that are
+// safe at reset go there: 46 must not be pulled high while GPIO 0 is low (the
+// upload path), and 3 is ignored at boot unless the JTAG-select eFuse is burned.
 // Off this header, 35-37 belong to the octal PSRAM, 26-32 to flash, 19/20 to USB.
 // Buttons (talk, mute, knob switch) go to GND and use the internal pull-up.
 constexpr uint8_t LED_PIN = 5;
@@ -12,8 +14,9 @@ constexpr unsigned long BUTTON_DEBOUNCE_MS = 40;
 constexpr uint8_t BUZZER_PIN = 4;
 
 constexpr uint8_t TALK_BUTTON_PIN = 6;
-// Toggles mute: wake-word listening off (the talk button still works).
-constexpr uint8_t MUTE_BUTTON_PIN = 7;
+// Toggles mute: wake-word listening off (the talk button still works). A bare
+// button to GND can only pull 46 low, which is its safe level at reset.
+constexpr uint8_t MUTE_BUTTON_PIN = 46;
 // Blue LED, lit while the mic listens (wake word armed, or recording). It
 // drops ~3 V, so from a 3.3 V pin it needs 47-100 ohm, not 220-330.
 constexpr uint8_t LISTEN_LED_PIN = 18;
@@ -23,7 +26,8 @@ constexpr uint8_t LISTEN_LED_PIN = 18;
 // The internal pull-ups are on too, as many boards leave SW's unpopulated.
 constexpr uint8_t ENCODER_CLK_PIN = 9;
 constexpr uint8_t ENCODER_DT_PIN = 10;
-constexpr uint8_t ENCODER_SW_PIN = 8;
+// SW sits on 3 because some modules pull it up (R3), which 46 cannot take.
+constexpr uint8_t ENCODER_SW_PIN = 3;
 // Quadrature cycles per click; 2 for a unit that needs two.
 constexpr int DIAL_STEPS_PER_DETENT = 1;
 // CLK/DT labels vary between makers; set if clockwise selects the previous agent.

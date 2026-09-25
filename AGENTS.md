@@ -110,9 +110,11 @@ Adding a field: add it to the firmware handler, the page, **and**
   is absent and the page offers the desk mic instead. Don't "fix" this in JS —
   it's a browser rule. HTTPS on the board would mean replacing `WebServer` with
   `esp_https_server`.
-- **Pins**: the usable header is fully used (GPIO 3 and 46 are strapping pins
-  and stay free), so new hardware needs a new pin plan. I2S port 0 is the mic,
-  port 1 the amp. The KY-040 is powered from 3V3, never 5V.
+- **Pins** live in `Board.h`; GPIO 7 and 8 are the only free header pins.
+  Strapping pins 3 and 46 carry only reset-safe parts: 46 must never be pulled
+  high (it would block uploads), so it takes a bare button to GND; 3 is ignored
+  at boot. I2S port 0 is the mic, port 1 the amp. The KY-040 is powered from
+  3V3, never 5V.
 - **The dial ISR is IRAM-only.** `Dial::onEdge` and `QuadratureDecoder::step`
   are `IRAM_ATTR`, the table is `DRAM_ATTR`, pins are read with `gpio_ll`, and
   the counter sits behind a `portMUX`. Keep it that way: no `Serial`,

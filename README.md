@@ -55,9 +55,9 @@ ESP32-S3 dev module with 8 MB PSRAM and 16 MB flash. Pins are in `Board.h`.
 | LED (with resistor) | GPIO 5 → LED → GND |
 | Active buzzer | GPIO 4 → buzzer → GND |
 | Talk button | GPIO 6 → button → GND (internal pull-up) |
-| Mute button | GPIO 7 → button → GND (internal pull-up) |
+| Mute button | GPIO 46 → button → GND (internal pull-up) |
 | Blue listening LED | GPIO 18 → 47–100 Ω → LED → GND |
-| KY-040 rotary dial | CLK 9, DT 10, SW 8, **+ → 3V3 (not 5V)**, GND → GND |
+| KY-040 rotary dial | CLK 9, DT 10, SW 3, **+ → 3V3 (not 5V)**, GND → GND |
 | INMP441 microphone | SCK 12, WS 11, SD 13, L/R → GND, VDD 3V3 |
 | MAX98357A amplifier | BCLK 16, LRC 15, DIN 17, VIN 5V, 4 Ω speaker on +/− |
 
@@ -65,7 +65,9 @@ Power the KY-040 from 3V3: its pull-ups go to "+", and the ESP32-S3's GPIOs are
 not 5 V tolerant. If clockwise selects the previous agent, set `DIAL_REVERSE` in
 `Board.h`; if one click moves two agents or every other click is ignored, adjust
 `DIAL_STEPS_PER_DETENT`. The blue LED needs a small resistor (47–100 Ω) or it
-barely glows. All of this hardware is optional; the page works without it.
+barely glows. GPIO 46 is a strapping pin: keep the mute button a plain button
+to GND, with no pull-up resistor, or uploads fail. All of this hardware is
+optional; the page works without it.
 
 ## Build and flash
 

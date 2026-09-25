@@ -25,12 +25,13 @@
 //   LED (with resistor)  GPIO 5 -> LED -> GND
 //   Active buzzer        GPIO 4 -> buzzer -> GND
 //   Talk button          GPIO 6 -> button -> GND (internal pull-up)
-//   Mute button          GPIO 7 -> button -> GND (internal pull-up)
+//   Mute button          GPIO 46 -> button -> GND (internal pull-up)
 //   Blue listening LED   GPIO 18 -> 47-100 ohm -> LED -> GND
-//   KY-040 dial          CLK GPIO 9, DT GPIO 10, SW GPIO 8, + -> 3V3 (not 5V), GND
+//   KY-040 dial          CLK GPIO 9, DT GPIO 10, SW GPIO 3, + -> 3V3 (not 5V), GND
 //   INMP441 mic          SCK GPIO 12, WS GPIO 11, SD GPIO 13, L/R -> GND, VDD 3V3
 //   MAX98357A amp        BCLK GPIO 16, LRC GPIO 15, DIN GPIO 17, VIN 5V, speaker on +/-
-// Leave GPIO 0, 3, 45 and 46 alone (strapping pins), and 35-37 (octal PSRAM).
+// GPIO 0 and 45 are strapping pins and 35-37 belong to the octal PSRAM; 3 and 46
+// carry only the reset-safe parts above (see Board.h).
 //
 // Board settings: ESP32S3 Dev Module, PSRAM "OPI PSRAM" (recordings live
 // there), Flash Size 16MB, Partition Scheme "16M Flash (3MB APP/9.9MB FATFS)"
