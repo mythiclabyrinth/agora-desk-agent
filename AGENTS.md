@@ -103,7 +103,8 @@ Adding a field: add it to the firmware handler, the page, **and**
 - **PCM reaches the amp in whole frames.** `Speech::speakOnce` carries the
   tail of a split sample to the next socket read; the I2S DMA takes bytes
   verbatim, so an odd-length write would shift every later sample by a byte
-  and play as noise.
+  and play as noise. The amp sink also holds `SPEAKER_PREBUFFER_MS` of each
+  piece before starting, because the DMA is 60 ms deep and the APIs pause.
 - **Groq Orpheus takes ≤ 200 characters per request**; `speechChunks` splits at
   sentence boundaries. Arabic accent swaps to the Arabic model and voices.
 - **Secrets are write-only.** Agora tokens and speech keys are never echoed by

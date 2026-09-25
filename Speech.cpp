@@ -7,6 +7,7 @@
 #include <esp_heap_caps.h>
 
 #include "Audio.h"
+#include "Board.h"
 #include "Json.h"
 #include "Wav.h"
 
@@ -43,11 +44,41 @@ constexpr unsigned long STREAM_TIMEOUT_MS = 15000;
 constexpr size_t SYNTH_MAX_BYTES = 4u * 1024 * 1024;
 constexpr size_t SYNTH_FIRST_ALLOC = 256u * 1024;
 
-// Sink: the desk amplifier.
-bool ampFormat(uint32_t rate, uint16_t channels, uint16_t bits, void *) {
-  return audio.startPlayback(rate, channels, bits);
+// Sink: the desk amplifier, with a head start. The first
+// SPEAKER_PREBUFFER_MS of each piece collect here before the amp starts, so
+// a pause in the stream drains this instead of the 60 ms DMA.
+struct AmpSink {
+  uint8_t *buf = nullptr;
+  size_t cap = 0;
+  size_t len = 0;
+  bool started = false;
+};
+void ampFlush(AmpSink *a) {
+  if (a->len) audio.play(a->buf, a->len);
+  a->len = 0;
+  a->started = true;
 }
-bool ampPcm(const uint8_t *data, size_t len, void *) {
+bool ampFormat(uint32_t rate, uint16_t channels, uint16_t bits, void *ctx) {
+  auto *a = static_cast<AmpSink *>(ctx);
+  ampFlush(a);  // the previous piece's tail plays before the format can change
+  if (!audio.startPlayback(rate, channels, bits)) return false;
+  size_t want = rate * channels * (bits / 8) * SPEAKER_PREBUFFER_MS / 1000;
+  if (want != a->cap) {
+    free(a->buf);
+    a->buf = static_cast<uint8_t *>(psramFound() ? heap_caps_malloc(want, MALLOC_CAP_SPIRAM) : malloc(want));
+    a->cap = a->buf ? want : 0;
+  }
+  a->started = !a->buf;  // no buffer: stream straight through
+  return true;
+}
+bool ampPcm(const uint8_t *data, size_t len, void *ctx) {
+  auto *a = static_cast<AmpSink *>(ctx);
+  if (!a->started && a->len + len < a->cap) {
+    memcpy(a->buf + a->len, data, len);
+    a->len += len;
+    return true;
+  }
+  ampFlush(a);
   audio.play(data, len);
   return true;
 }
@@ -343,8 +374,11 @@ bool Speech::speak(const VoiceSettings &settings, const String &text, String &er
     error = "Speaker is not connected.";
     return false;
   }
-  SpeechSink sink{ampFormat, ampPcm, nullptr};
+  AmpSink amp;
+  SpeechSink sink{ampFormat, ampPcm, &amp};
   bool ok = speakTo(settings, text, sink, error);
+  ampFlush(&amp);
+  free(amp.buf);
   audio.stopPlayback();
   return ok;
 }

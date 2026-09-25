@@ -223,6 +223,7 @@ void WakeWord::resetWindow() {
   _probIndex = 0;
   _strideStep = 0;
   _score.store(0);
+  _peak.store(0);
 }
 
 void WakeWord::feed(const int16_t *samples, size_t count, uint32_t endPos) {

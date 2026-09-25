@@ -57,6 +57,10 @@ constexpr int8_t AMP_DATA_PIN = 17;   // DIN
 // Speech from the APIs sits well under full scale; samples are multiplied
 // by this (with clipping) on the way to the amp. 1 leaves them as sent.
 constexpr int SPEAKER_GAIN = 2;
+// The I2S DMA holds 60 ms and the speech APIs deliver at about real time
+// with pauses, so this much of each piece waits in PSRAM before the amp
+// starts; playback then runs that far behind the network.
+constexpr unsigned long SPEAKER_PREBUFFER_MS = 600;
 
 // 16 kHz mono is what Whisper wants and keeps a 15 s clip under 500 KB.
 constexpr uint32_t MIC_SAMPLE_RATE = 16000;
