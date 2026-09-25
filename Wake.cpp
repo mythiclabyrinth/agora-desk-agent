@@ -223,6 +223,7 @@ void WakeWord::resetWindow() {
   _probIndex = 0;
   _strideStep = 0;
   _score.store(0);
+  _peak.store(0);
 }
 
 void WakeWord::feed(const int16_t *samples, size_t count, uint32_t endPos) {
@@ -276,7 +277,9 @@ bool WakeWord::featureReady(const uint16_t *values, size_t size, uint32_t now) {
 
   if (interpreter->Invoke() != kTfLiteOk) return false;
   uint8_t p = interpreter->output(0)->data.uint8[0];
-  if (p >= _peak.load() || now - _peakAt > WAKE_PEAK_HOLD_MS) {
+  // The first second after re-arming can spike on stale streaming state;
+  // those steps cannot detect, so they do not count for the meter either.
+  if (!_warmup && (p >= _peak.load() || now - _peakAt > WAKE_PEAK_HOLD_MS)) {
     _peak.store(p);
     _peakAt = now;
   }

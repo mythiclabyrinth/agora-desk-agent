@@ -7,6 +7,7 @@
 #include <esp_heap_caps.h>
 
 #include "Audio.h"
+#include "Board.h"
 #include "Json.h"
 #include "Wav.h"
 
@@ -43,11 +44,41 @@ constexpr unsigned long STREAM_TIMEOUT_MS = 15000;
 constexpr size_t SYNTH_MAX_BYTES = 4u * 1024 * 1024;
 constexpr size_t SYNTH_FIRST_ALLOC = 256u * 1024;
 
-// Sink: the desk amplifier.
-bool ampFormat(uint32_t rate, uint16_t channels, uint16_t bits, void *) {
-  return audio.startPlayback(rate, channels, bits);
+// Sink: the desk amplifier, with a head start. The first
+// SPEAKER_PREBUFFER_MS of each piece collect here before the amp starts, so
+// a pause in the stream drains this instead of the 60 ms DMA.
+struct AmpSink {
+  uint8_t *buf = nullptr;
+  size_t cap = 0;
+  size_t len = 0;
+  bool started = false;
+};
+void ampFlush(AmpSink *a) {
+  if (a->len) audio.play(a->buf, a->len);
+  a->len = 0;
+  a->started = true;
 }
-bool ampPcm(const uint8_t *data, size_t len, void *) {
+bool ampFormat(uint32_t rate, uint16_t channels, uint16_t bits, void *ctx) {
+  auto *a = static_cast<AmpSink *>(ctx);
+  ampFlush(a);  // the previous piece's tail plays before the format can change
+  if (!audio.startPlayback(rate, channels, bits)) return false;
+  size_t want = rate * channels * (bits / 8) * SPEAKER_PREBUFFER_MS / 1000;
+  if (want != a->cap) {
+    free(a->buf);
+    a->buf = static_cast<uint8_t *>(psramFound() ? heap_caps_malloc(want, MALLOC_CAP_SPIRAM) : malloc(want));
+    a->cap = a->buf ? want : 0;
+  }
+  a->started = !a->buf;  // no buffer: stream straight through
+  return true;
+}
+bool ampPcm(const uint8_t *data, size_t len, void *ctx) {
+  auto *a = static_cast<AmpSink *>(ctx);
+  if (!a->started && a->len + len < a->cap) {
+    memcpy(a->buf + a->len, data, len);
+    a->len += len;
+    return true;
+  }
+  ampFlush(a);
   audio.play(data, len);
   return true;
 }
@@ -343,8 +374,11 @@ bool Speech::speak(const VoiceSettings &settings, const String &text, String &er
     error = "Speaker is not connected.";
     return false;
   }
-  SpeechSink sink{ampFormat, ampPcm, nullptr};
+  AmpSink amp;
+  SpeechSink sink{ampFormat, ampPcm, &amp};
   bool ok = speakTo(settings, text, sink, error);
+  ampFlush(&amp);
+  free(amp.buf);
   audio.stopPlayback();
   return ok;
 }
@@ -481,6 +515,7 @@ bool Speech::speakOnce(const String &provider, const String &key, const String &
     error += "\").";
   }
   bool haveFmt = false;
+  uint16_t format = 0;
   uint32_t rate = 0;
   uint16_t channels = 0;
   uint16_t bits = 0;
@@ -504,24 +539,39 @@ bool Speech::speakOnce(const String &provider, const String &key, const String &
         error = "Speech stream ended early.";
         break;
       }
+      format = le16(fmt);
       channels = le16(fmt + 2);
       rate = le32(fmt + 4);
       bits = le16(fmt + 14);
       haveFmt = true;
       if (size & 1) body.skip(1);
     } else if (!memcmp(ch, "data", 4)) {
-      if (!haveFmt || bits != 16 || !sink.format(rate, channels, bits, sink.ctx)) {
+      Serial.printf("Speech: WAV format %u, %lu Hz, %u ch, %u-bit, data %s\n", format, (unsigned long)rate, channels,
+                    bits, size == 0xFFFFFFFFu ? "streamed" : String(size).c_str());
+      // 1 is PCM; 0xFFFE (extensible) carries 16-bit PCM from every speech API.
+      bool pcmWav = format == 1 || format == 0xFFFE;
+      if (!haveFmt || !pcmWav || bits != 16 || !sink.format(rate, channels, bits, sink.ctx)) {
         ok = false;
         error = "Cannot play this audio format.";
         break;
       }
       bool untilClose = size == 0xFFFFFFFFu;
       size_t remaining = size;
+      // The socket hands over arbitrary byte counts, and the I2S DMA takes
+      // bytes verbatim, so a read that ends mid-sample would shift every
+      // sample after it by a byte. Only whole frames reach the sink; the
+      // tail of a split frame waits for the next read.
+      const size_t frame = channels * (bits / 8);
       uint8_t pcm[1024];
+      size_t held = 0;
+      size_t total = 0;
+      size_t splitReads = 0;
+      bool logged = false;
       unsigned long last = millis();
       while (untilClose || remaining) {
-        size_t want = untilClose ? sizeof(pcm) : min(sizeof(pcm), remaining);
-        int got = body.read(pcm, want);
+        size_t want = sizeof(pcm) - held;
+        if (!untilClose) want = min(want, remaining);
+        int got = body.read(pcm + held, want);
         if (got < 0) break;  // body finished: normal end for an open-ended data chunk
         if (got == 0) {
           if (millis() - last > STREAM_TIMEOUT_MS) {
@@ -533,13 +583,26 @@ bool Speech::speakOnce(const String &provider, const String &key, const String &
           continue;
         }
         last = millis();
-        if (!sink.pcm(pcm, got, sink.ctx)) {
+        if (!untilClose) remaining -= got;
+        size_t have = held + got;
+        size_t whole = have - have % frame;
+        if (have != whole) splitReads++;
+        if (!logged && whole >= 16) {
+          logged = true;
+          Serial.print("Speech: first samples");
+          for (size_t i = 0; i < 16; i += 2) Serial.printf(" %d", static_cast<int16_t>(le16(pcm + i)));
+          Serial.println();
+        }
+        if (whole && !sink.pcm(pcm, whole, sink.ctx)) {
           ok = false;
           error = "The reply is too long to speak here.";
           break;
         }
-        if (!untilClose) remaining -= got;
+        total += whole;
+        held = have - whole;
+        if (held) memmove(pcm, pcm + whole, held);
       }
+      Serial.printf("Speech: %u PCM bytes, %u reads ended mid-sample\n", (unsigned)total, (unsigned)splitReads);
       break;
     } else {
       if (size == 0xFFFFFFFFu || !body.skip(size + (size & 1))) {
