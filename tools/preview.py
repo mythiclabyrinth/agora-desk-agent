@@ -2,8 +2,9 @@
 """Preview the embedded page with isolated demo APIs; never contacts the ESP32.
 Run: python3 tools/preview.py, then open http://127.0.0.1:8765.
 Add ?scenario=offline or ?scenario=empty to exercise connection/setup states,
-?scenario=voice to watch a button conversation land in the chat, or
-?scenario=wake to watch a hands-free (wake word) exchange.
+?scenario=voice to watch a button conversation land in the chat,
+?scenario=wake to watch a hands-free (wake word) exchange, or ?scenario=dial to
+watch the desk dial cycle the hands-free agent.
 """
 import gzip
 import json
@@ -38,6 +39,16 @@ VOICE_RUN = {'started': 0, 'source': 'button', 'agent': 'claude', 'stopped': 0}
 # ?scenario=wake: the detector's score climbs, the phrase is heard, the VAD ends the clip, and the reply lands.
 WAKE_STEPS = [(0, 'idle'), (3, 'recording'), (6, 'transcribing'), (8, 'waiting'), (12, 'speaking'), (16, 'done')]
 WAKE_RUN = {'started': 0}
+# ?scenario=dial: Cursor is configured too, and the desk dial moves the hands-free agent (VOICE['agent'],
+# /api/status voice.target_agent) between the configured agents every few seconds.
+DIAL_CYCLE = ('claude', 'cursor')
+DIAL_EVERY_S = 3
+
+
+def agent_ready(a, scenario):
+    if 'scenario=empty' in scenario:
+        return False
+    return a['ready'] or ('scenario=dial' in scenario and a['id'] in DIAL_CYCLE)
 
 
 def wake_status(armed=True, score=0.0):
@@ -88,9 +99,13 @@ class Handler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(page)
         elif path == '/api/agents':
-            self.reply({'agents': [dict(a, ready=False, token_set=False) if empty else a for a in AGENTS]})
+            self.reply({'agents': [dict(a, ready=agent_ready(a, scenario), token_set=not empty and (a['token_set'] or agent_ready(a, scenario)))
+                                   for a in AGENTS]})
         elif path == '/api/status':
-            voice = dict(state='idle', source='button', job=0, agent='claude', recorded_ms=0,
+            if 'scenario=dial' in scenario:
+                VOICE['agent'] = DIAL_CYCLE[int(time.time() / DIAL_EVERY_S) % len(DIAL_CYCLE)]
+            # agent: this exchange's; target_agent: the hands-free setting (talk button, wake word, dial).
+            voice = dict(state='idle', source='button', job=0, agent='claude', target_agent=VOICE['agent'], recorded_ms=0,
                          stt_ready=VOICE['stt_ready'], tts_ready=VOICE['tts_ready'], mic=True, speaker=True)
             voice['wake'] = wake_status(score=0.02 + 0.03 * abs(math.sin(time.time())))
             if 'scenario=wake' in scenario:
@@ -128,7 +143,7 @@ class Handler(BaseHTTPRequestHandler):
             self.reply(dict(wifi=not offline, ssid='Studio Wi-Fi', ip='192.168.0.113', ap_ip='192.168.4.1',
                             host='esp32-agent.local', listening=bool(JOB['number'] and time.time()-JOB['started'] < 4),
                             voice=voice,
-                            agents=[dict(id=a['id'], name=a['name'], ready=False if empty else a['ready']) for a in AGENTS]))
+                            agents=[dict(id=a['id'], name=a['name'], ready=agent_ready(a, scenario)) for a in AGENTS]))
         elif path == '/api/voice':
             self.reply(VOICE)
         elif path == '/api/wifi/scan':
@@ -182,7 +197,12 @@ class Handler(BaseHTTPRequestHandler):
         elif self.path == '/api/wifi':
             self.reply({'ok':True,'connected':True,'ip':'192.168.0.113'})
         elif self.path == '/api/voice':
-            VOICE.update(stt_provider=data['stt_provider'], tts_provider=data['tts_provider'], accent=data['accent'], agent=data['agent'],
+            # Like the board, every field is optional; the page sends agent only when it was picked there.
+            if 'agent' in data:
+                if data['agent'] not in ('claude', 'cursor', 'codex'):
+                    return self.reply({'error':'Choose which agent the desk should reach hands-free.'},400)
+                VOICE['agent'] = data['agent']
+            VOICE.update(stt_provider=data['stt_provider'], tts_provider=data['tts_provider'], accent=data['accent'],
                          stt_models=dict(groq=data['stt_model_groq'], openai=data['stt_model_openai']),
                          tts_models=dict(groq=data['tts_model_groq'], openai=data['tts_model_openai']),
                          tts_voices=dict(groq=data['voice_groq'], openai=data['voice_openai']))

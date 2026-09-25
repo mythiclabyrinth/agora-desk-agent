@@ -14,7 +14,12 @@ nothing is forwarded to a board, and demo saves last only until the process stop
   heard, the VAD ends the clip, and the exchange lands in the chat with the “Heard …” banner.
   Settings › Voice › Devices shows the Wake word section (toggle = the desk's mute
   button, sensitivity, live score) alongside the status checks, chat page audio and the
-  talk button's agent. Speech & voice holds only speech-to-text and text-to-speech.
+  hands-free agent. Speech & voice holds only speech-to-text and text-to-speech.
+- `/?scenario=dial`: Cursor counts as configured too, and the desk dial moves the hands-free
+  agent (`voice.target_agent` in `/api/status`) between Claude and Cursor every three seconds.
+  Settings › Voice › Devices › Hands-free agent follows it (unless the picker has focus), and
+  the Overview marks that agent's card “hands-free”. Codex stays “setup needed”, as the dial
+  only cycles configured agents.
 - Wi-Fi scanning and joining use demo data only.
 - Send a message containing `preview-error` to simulate a failed send.
 - Other messages receive an explicitly labeled demo response after four seconds.

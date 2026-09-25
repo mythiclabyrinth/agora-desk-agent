@@ -11,7 +11,6 @@
 
 namespace {
 
-constexpr unsigned long DEBOUNCE_MS = 40;
 constexpr unsigned long SPEAK_GRACE_MS = 1500;
 constexpr unsigned long WAKE_READY_CHECK_MS = 1000;
 
@@ -42,27 +41,6 @@ const char *voiceSourceName(VoiceSource source) {
     case VoiceSource::Wake: return "wake";
     default: return "button";
   }
-}
-
-void DebouncedButton::begin(uint8_t pin) {
-  _pin = pin;
-  pinMode(pin, INPUT_PULLUP);
-  _raw = digitalRead(pin) == LOW;
-  _pressed = _raw;
-  _changedAt = millis();
-}
-
-int8_t DebouncedButton::poll() {
-  bool raw = digitalRead(_pin) == LOW;
-  unsigned long now = millis();
-  if (raw != _raw) {
-    _raw = raw;
-    _changedAt = now;
-    return 0;
-  }
-  if (raw == _pressed || now - _changedAt < DEBOUNCE_MS) return 0;
-  _pressed = raw;
-  return _pressed ? 1 : -1;
 }
 
 void VoiceFlow::begin() {

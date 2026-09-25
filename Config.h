@@ -33,7 +33,9 @@ struct VoiceSettings {
   String voiceGroq;
   String voiceOpenai;
   String accent;    // american | british | arabic
-  String agentKey;  // which agent the talk button reaches: claude, cursor, codex
+  // The hands-free agent: what the talk button, the wake word and the dial
+  // reach (claude, cursor, codex). Comes from ConfigStore's RAM copy.
+  String agentKey;
 
   bool sttReady() const;
   bool ttsReady() const;
@@ -70,8 +72,18 @@ class ConfigStore {
   bool saveAgent(AgentKind kind, const AgentSettings &incoming, bool keepToken);
 
   VoiceSettings voice();
+  // Also saves the hands-free agent (through saveVoiceAgent).
   void saveVoiceFeatures(const VoiceSettings &incoming);
   bool saveVoiceKey(const String &provider, const String &key);  // empty key clears
+
+  // The hands-free agent lives in RAM first: the dial changes it on every
+  // click but writes flash only once the knob rests, and the page's save and
+  // the dial must see one value. voice().agentKey is this copy.
+  const String &voiceAgent() const { return _voiceAgent; }
+  // RAM only, effective at once. False for an unknown key.
+  bool setVoiceAgent(const String &key);
+  // RAM and NVS; the NVS write is skipped when flash already holds `key`.
+  bool saveVoiceAgent(const String &key);
 
   // Cached in RAM: loop() asks every pass, and NVS reads are not free.
   const WakeSettings &wake() const { return _wake; }
@@ -86,6 +98,8 @@ class ConfigStore {
 
   Preferences _prefs;
   WakeSettings _wake;
+  String _voiceAgent;       // what the desk uses now
+  String _voiceAgentSaved;  // what NVS holds ("" if never saved)
 };
 
 extern ConfigStore configStore;

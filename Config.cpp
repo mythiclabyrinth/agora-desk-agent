@@ -27,6 +27,7 @@ constexpr char DEFAULT_GROQ_VOICE[] = "autumn";
 constexpr char GROQ_ARABIC_VOICE[] = "noura";
 constexpr char DEFAULT_OPENAI_VOICE[] = "alloy";
 constexpr char DEFAULT_ACCENT[] = "american";
+constexpr char DEFAULT_VOICE_AGENT[] = "claude";
 
 String orDefault(const String &value, const char *fallback) {
   return value.length() ? value : String(fallback);
@@ -50,6 +51,8 @@ void ConfigStore::begin() {
   _wake.enabled = _prefs.getBool("wake_on", false);
   _wake.sensitivity = _prefs.getString("wake_sens", "medium");
   if (!wakeSensitivityKnown(_wake.sensitivity)) _wake.sensitivity = "medium";
+  _voiceAgentSaved = _prefs.getString("voice_ag", "");
+  _voiceAgent = parseAgent(_voiceAgentSaved) == AgentKind::Unknown ? String(DEFAULT_VOICE_AGENT) : _voiceAgentSaved;
 }
 
 String ConfigStore::wifiSsid() {
@@ -184,7 +187,7 @@ VoiceSettings ConfigStore::voice() {
   s.voiceGroq = orDefault(_prefs.getString("v_vc_g", ""), DEFAULT_GROQ_VOICE);
   s.voiceOpenai = orDefault(_prefs.getString("v_vc_o", ""), DEFAULT_OPENAI_VOICE);
   s.accent = orDefault(_prefs.getString("v_acc", ""), DEFAULT_ACCENT);
-  s.agentKey = orDefault(_prefs.getString("voice_ag", ""), "claude");
+  s.agentKey = _voiceAgent;
   if (!voiceProviderKnown(s.sttProvider)) s.sttProvider = VOICE_GROQ;
   if (!voiceProviderKnown(s.ttsProvider)) s.ttsProvider = VOICE_GROQ;
   if (!voiceAccentKnown(s.accent)) s.accent = DEFAULT_ACCENT;
@@ -201,7 +204,22 @@ void ConfigStore::saveVoiceFeatures(const VoiceSettings &in) {
   _prefs.putString("v_vc_g", orDefault(in.voiceGroq, DEFAULT_GROQ_VOICE).c_str());
   _prefs.putString("v_vc_o", orDefault(in.voiceOpenai, DEFAULT_OPENAI_VOICE).c_str());
   _prefs.putString("v_acc", voiceAccentKnown(in.accent) ? in.accent.c_str() : DEFAULT_ACCENT);
-  _prefs.putString("voice_ag", orDefault(in.agentKey, "claude").c_str());
+  saveVoiceAgent(parseAgent(in.agentKey) == AgentKind::Unknown ? String(DEFAULT_VOICE_AGENT) : in.agentKey);
+}
+
+bool ConfigStore::setVoiceAgent(const String &key) {
+  if (parseAgent(key) == AgentKind::Unknown) return false;
+  _voiceAgent = key;
+  return true;
+}
+
+bool ConfigStore::saveVoiceAgent(const String &key) {
+  if (!setVoiceAgent(key)) return false;
+  if (key != _voiceAgentSaved) {
+    _prefs.putString("voice_ag", key.c_str());
+    _voiceAgentSaved = key;
+  }
+  return true;
 }
 
 bool ConfigStore::saveVoiceKey(const String &provider, const String &key) {

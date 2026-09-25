@@ -37,6 +37,16 @@ use voice, a Groq and/or OpenAI key for speech.
   board's mic is listening: wake word armed, or any recording in progress. The
   wake word is deaf while the board beeps or speaks, so a reply that says the
   phrase cannot wake it.
+- **Hands-free agent and the dial** — the talk button and the wake word both
+  reach one agent, set under Settings › Voice › Devices › Hands-free agent or
+  with a KY-040 rotary dial. Turning the dial steps through the *configured*
+  agents in the order Claude, Cursor, Codex (wrapping both ways; clockwise =
+  next) and, once the knob rests, beeps the new agent's place: one beep for
+  Claude, two for Cursor, three for Codex. A short press on the knob replays
+  that. With only one agent configured the dial just ticks; with none it gives
+  the three error beeps. A turn mid-recording applies to the next message and
+  beeps after the recording ends. The page's picker and the Overview follow the
+  dial; the choice is saved to flash a moment after the knob stops.
 - **Voice from the browser (no extra hardware)** — the chat's mic button records
   with the browser's microphone and the speaker toggle plays replies through the
   browser. The board proxies both to the speech APIs so the keys never leave it.
@@ -52,14 +62,20 @@ ESP32-S3 dev module with 8 MB PSRAM and 16 MB flash. Pins are in `Board.h`.
 | Talk button | GPIO 6 → button → GND (internal pull-up) |
 | Mute button | GPIO 7 → button → GND (internal pull-up) |
 | Blue listening LED | GPIO 8 → 47–100 Ω → LED → GND |
+| KY-040 rotary dial | CLK 9, DT 10, SW 18, **+ → 3V3 (not 5V)**, GND → GND |
 | INMP441 microphone | SCK 12, WS 11, SD 13, L/R → GND, VDD 3V3 |
 | MAX98357A amplifier | BCLK 16, LRC 15, DIN 17, VIN 5V, 4 Ω speaker on +/− |
 
-GPIO 3 and 46 are strapping pins and stay unused; on the usable header
-(GND, 5V, 13, 12, 11, 10, 9, 46, 3, 8, 18, 17, 16, 15, 7, 6, 5, 4, RST, 3V3)
-GPIO 9, 10 and 18 are still free. A blue LED drops about 3 V, so from a 3.3 V
+GPIO 3 and 46 are strapping pins and stay unused; with the dial on 9, 10 and
+18 the usable header (GND, 5V, 13, 12, 11, 10, 9, 46, 3, 8, 18, 17, 16, 15, 7,
+6, 5, 4, RST, 3V3) is fully used. Power the KY-040 from 3V3: its on-board
+pull-ups go to "+", and the ESP32-S3's GPIOs are not 5 V tolerant. The
+firmware enables the internal pull-ups too, since many KY-040 boards leave the
+switch's pull-up unpopulated. If clockwise selects the previous agent, set
+`DIAL_REVERSE` in `Board.h`; if one click moves two agents or every other
+click is ignored, adjust `DIAL_STEPS_PER_DETENT`. A blue LED drops about 3 V, so from a 3.3 V
 pin it needs a small resistor (47–100 Ω) or it barely glows. The LEDs, buzzer,
-buttons, mic and amp are all optional; the page works without any of them.
+buttons, dial, mic and amp are all optional; the page works without any of them.
 
 ## Build and flash
 
@@ -87,7 +103,8 @@ in `web/`, run `python3 web/build.py` first (see [Editing the page](#editing-the
    **Agent ID** matches the bridge's `AGENT_ID` (the `@mention` is resolved by
    exact id or by the slug of the agent's display name).
 5. Optional — Settings › Voice: paste a Groq (`gsk_…`) or OpenAI (`sk-…`) key,
-   choose providers/models, and pick which agent the physical button talks to.
+   choose providers/models, and pick the hands-free agent (the one the talk
+   button, the wake word and the dial reach) under Devices.
 
 ### Browser microphone and HTTPS
 
@@ -134,6 +151,10 @@ Portal.*         soft-AP, captive DNS, Wi-Fi join/scan, mDNS
 WebUi.*          HTTP routes and JSON API
 ChatClient.*     post to Agora, poll for the agent's reply
 Feedback.*       LED and buzzer patterns
+Button.*         debounced push button (talk, mute, dial switch)
+Dial.*           KY-040 rotary encoder: interrupts, detent counter, switch
+Quadrature.*     Gray-code state table that turns edges into detents
+AgentDial.*      dial clicks -> hands-free agent, beeps, deferred save
 Mic.*            I2S mic task (core 0): gain, PSRAM ring, feeds VAD + wake word
 Wake.*           wake word engine (TFLite Micro + audio frontend)
 WakeModel.h      GENERATED model bytes + manifest (tools/wake/make_model_header.py)

@@ -91,6 +91,13 @@ void Feedback::muteToggled(bool muted) {
   }
 }
 
+void Feedback::agentCue(uint8_t position) {
+  for (uint8_t i = 0; i < position; i++) {
+    if (i) delay(DIAL_CUE_GAP_MS);
+    beep(DIAL_CUE_BEEP_MS);
+  }
+}
+
 void Feedback::listenLed(bool on) {
   if (_listenLed == (on ? 1 : 0)) return;
   _listenLed = on ? 1 : 0;

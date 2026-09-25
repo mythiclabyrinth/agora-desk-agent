@@ -54,12 +54,12 @@ The page talks to the firmware only through the JSON API in `WebUi.cpp`:
 
 | Route | Purpose |
 | --- | --- |
-| `GET /api/status` | Wi-Fi, agents summary, voice state (polled every few seconds) |
+| `GET /api/status` | Wi-Fi, agents summary, voice state (polled every few seconds); `voice.agent` is the current exchange's agent, `voice.target_agent` the hands-free setting (dial) |
 | `GET /api/listen` | state of the current chat job |
 | `POST /api/chat` | `{agent, text, speak}` → starts a job |
 | `GET/POST /api/agents` | per-agent settings (token is write-only) |
 | `POST /api/wifi`, `GET /api/wifi/scan` | join / scan |
-| `GET/POST /api/voice`, `POST /api/voice/keys`, `POST /api/voice/test` | voice settings; keys write-only |
+| `GET/POST /api/voice`, `POST /api/voice/keys`, `POST /api/voice/test` | voice settings; keys write-only; POST fields are optional and the page sends `agent` only when picked, so it never undoes a dial turn |
 | `POST /api/voice/talk` | `{action: start\|stop, agent}` drives the board mic from the page |
 | `POST /api/voice/wake` | `{enabled?, sensitivity?}` wake word on/off (= the mute button) and low\|medium\|high; allowed mid-exchange → `{wake}` |
 | `POST /api/voice/transcribe` | multipart clip from the browser mic → `{text}` |
@@ -72,7 +72,7 @@ Adding a field: add it to the firmware handler, the page, **and**
 
 - **C++**: one class per concern, a global singleton per module
   (`configStore`, `portal`, `chatClient`, `webUi`, `voiceFlow`, `audio`,
-  `speech`, `feedback`, `mic`, `wakeWord`), `begin()` in `setup()`, `update()`/`handle()` in
+  `speech`, `feedback`, `mic`, `wakeWord`, `dial`, `agentDial`), `begin()` in `setup()`, `update()`/`handle()` in
   `loop()`. Comments explain *why*, not what. Pins and limits live in
   `Board.h`; never hardcode a GPIO elsewhere.
 - **Errors degrade to text.** Handlers return `sendError(code, message)` with a
@@ -120,7 +120,19 @@ Adding a field: add it to the firmware handler, the page, **and**
   `esp_https_server`.
 - **Strapping pins** GPIO 3 and 46 stay unused. I2S port 0 is the mic, port 1
   the amp. Pins: LED 5, buzzer 4, talk button 6, mute button 7, blue listening
-  LED 8; free on the usable header: 9, 10, 18.
+  LED 8, KY-040 dial CLK 9 / DT 10 / SW 18 (module powered from 3V3, never
+  5V). The usable header is now fully used; new hardware needs another pin plan.
+- **The dial ISR is IRAM-only.** `Dial::onEdge` and `QuadratureDecoder::step`
+  are `IRAM_ATTR`, the table is `DRAM_ATTR`, pins are read with `gpio_ll`, and
+  the counter sits behind a `portMUX`. Keep it that way: no `Serial`,
+  `digitalRead`, allocation or flash-resident code in there. Bounce is rejected
+  by the state table, not by delays.
+- **The hands-free agent is cached** (`ConfigStore::voiceAgent()`), because the
+  dial changes it per click (`setVoiceAgent`, RAM) and writes flash only after
+  `DIAL_SAVE_REST_MS` of rest (`saveVoiceAgent`). `voice().agentKey` reads the
+  cache, and `saveVoiceFeatures` goes through `saveVoiceAgent`, so the page and
+  the dial share one value. `AgentDial` holds its beeps and the NVS write while
+  a recording is open.
 - **The mic has one reader.** `Mic` runs a FreeRTOS task on core 0 that owns
   I2S0; it feeds `wakeWord`, the VAD and a PSRAM ring. `Audio` recordings copy
   from the ring in `loop()` (with a 300 ms pre-roll). Never call `readBytes` on
@@ -145,7 +157,7 @@ Adding a field: add it to the firmware handler, the page, **and**
 
 - Firmware: compile with the exact FQBN above. For pure logic (`Json.h`,
   `Speech::BodyReader`, `Wav.h`, `slugify`, `speechChunks`, `Vad`,
-  `wakePhraseEnd`), a throwaway host
+  `wakePhraseEnd`, `QuadratureDecoder`, `dialPick`), a throwaway host
   test with a tiny `String`/`millis` shim compiles under clang in seconds; keep
   such files out of the repo or under a `tests/` folder if they become permanent.
 - Page: `python3 tools/preview.py`, then exercise the scenarios listed in

@@ -7,6 +7,8 @@
 // LED is GPIO 5, buzzer is GPIO 4 — the two pins just above RST.
 // GPIO 3 and GPIO 46 are strapping pins, so they stay unused.
 constexpr uint8_t LED_PIN = 5;
+// Debounce for the push buttons (talk, mute, the knob's switch).
+constexpr unsigned long BUTTON_DEBOUNCE_MS = 40;
 constexpr uint8_t BUZZER_PIN = 4;
 
 // Push-to-talk button between GPIO 6 and GND (internal pull-up).
@@ -21,10 +23,39 @@ constexpr uint8_t MUTE_BUTTON_PIN = 7;
 // across the resistor from a 3.3 V pin: use roughly 47-100 ohm, not the usual
 // 220-330, or it will barely glow.
 constexpr uint8_t LISTEN_LED_PIN = 8;
-// On this breadboard's usable header (GND, 5V, 13, 12, 11, 10, 9, 46, 3, 8,
-// 18, 17, 16, 15, 7, 6, 5, 4, RST, 3V3) the free pins left are 9, 10 and 18;
-// 3 and 46 are strapping pins. Elsewhere, 35-37 belong to the octal PSRAM,
-// 26-32 to flash, 19/20 to USB.
+
+// KY-040 rotary encoder: turning it picks the hands-free agent (the one the
+// talk button and the wake word reach); a short press on the knob replays
+// which one is selected. Power the module from 3V3, NOT 5V: its on-board
+// 10k pull-ups go to "+", and the S3's GPIOs are not 5 V tolerant.
+// CLK/DT/SW also get the internal pull-ups, because most KY-040 boards leave
+// the SW pull-up unpopulated and an unwired knob must read as idle.
+constexpr uint8_t ENCODER_CLK_PIN = 9;
+constexpr uint8_t ENCODER_DT_PIN = 10;
+constexpr uint8_t ENCODER_SW_PIN = 18;
+// Most KY-040s click once per full quadrature cycle (what the decoder counts).
+// Set 2 for a unit that needs two cycles per click.
+constexpr int DIAL_STEPS_PER_DETENT = 1;
+// Set true if clockwise selects the previous agent instead of the next: the
+// CLK/DT labels are not consistent across KY-040 makers.
+constexpr bool DIAL_REVERSE = false;
+// A spin applies at once, but the "which agent" beeps wait for the knob to
+// rest this long (so a fast spin beeps once, for where it stopped)...
+constexpr unsigned long DIAL_BEEP_REST_MS = 350;
+// ...and the choice is written to flash only after this long at rest, so a
+// fidgety hand does not wear the NVS sector.
+constexpr unsigned long DIAL_SAVE_REST_MS = 1500;
+// Position cue: one beep per place in the fixed order (claude 1, cursor 2,
+// codex 3). Long enough to count, short enough not to stall loop() long.
+constexpr unsigned long DIAL_CUE_BEEP_MS = 60;
+constexpr unsigned long DIAL_CUE_GAP_MS = 140;
+// A knob press shorter than this replays the cue; longer holds do nothing,
+// which leaves room for a future long-press action.
+constexpr unsigned long DIAL_SHORT_PRESS_MS = 800;
+// With the encoder on 9, 10 and 18, this breadboard's usable header (GND, 5V,
+// 13, 12, 11, 10, 9, 46, 3, 8, 18, 17, 16, 15, 7, 6, 5, 4, RST, 3V3) is fully
+// used; 3 and 46 are strapping pins and stay free. Elsewhere, 35-37 belong to
+// the octal PSRAM, 26-32 to flash, 19/20 to USB.
 
 // INMP441 microphone on I2S port 0. VDD 3V3, GND, L/R to GND (left slot).
 constexpr int8_t MIC_BCLK_PIN = 12;   // SCK

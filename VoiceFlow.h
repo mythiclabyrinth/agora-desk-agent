@@ -2,6 +2,7 @@
 
 #include <Arduino.h>
 
+#include "Button.h"
 #include "Config.h"
 #include "Mic.h"
 
@@ -26,25 +27,13 @@ struct VoiceStatus {
   unsigned long recordedMs = 0;
 };
 
-// A push button to GND with the internal pull-up, debounced by time.
-class DebouncedButton {
- public:
-  void begin(uint8_t pin);
-  // +1 on a settled press, -1 on a settled release, 0 otherwise.
-  int8_t poll();
-
- private:
-  uint8_t _pin = 0;
-  bool _pressed = false;
-  bool _raw = false;
-  unsigned long _changedAt = 0;
-};
-
 class VoiceFlow {
  public:
   void begin();
   void update();
   VoiceStatus status() const;
+  // Cheap phase check for code that runs every loop pass (status() copies strings).
+  VoicePhase phase() const { return _phase; }
   // True while the mic is open or a clip is being sent; the LED stays lit.
   bool holdingLed() const;
   bool busy() const;

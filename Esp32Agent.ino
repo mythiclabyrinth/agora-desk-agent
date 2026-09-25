@@ -16,6 +16,10 @@
 // "Hey Jarvis"; tools/wake/README.md explains training "Hey Agora"), and an
 // energy VAD ends the recording when you stop talking.
 //
+// The talk button and the wake word reach the hands-free agent. The rotary
+// dial cycles it through the configured agents (claude, cursor, codex) and
+// beeps its place in that order: one, two or three beeps.
+//
 // The chat page can do the same without the desk hardware: the browser
 // records with its own microphone, the board forwards the clip for
 // transcription and fetches the spoken reply as a WAV for the page to play
@@ -31,7 +35,10 @@
 //   Blue listening LED   GPIO 8 -> 47-100 ohm -> LED -> GND (blue drops ~3 V, so
 //                        a bigger resistor leaves it very dim at 3.3 V). Lit
 //                        while the mic listens: wake word armed, or recording.
-// Still free on the usable header: GPIO 9, 10, 18.
+//   KY-040 dial          CLK GPIO 9, DT GPIO 10, SW GPIO 18, + -> 3V3 (NOT 5V: its
+//                        pull-ups go to +, and the GPIOs are not 5 V tolerant), GND.
+//                        Turn to pick the hands-free agent, press to hear which.
+// That uses up the usable header (3 and 46 are strapping pins).
 //   INMP441 mic          SCK GPIO 12, WS GPIO 11, SD GPIO 13, L/R -> GND, VDD 3V3
 //   MAX98357A amp        BCLK GPIO 16, LRC GPIO 15, DIN GPIO 17, VIN 5V, speaker on +/-
 // Leave GPIO 0, 3, 45 and 46 alone (strapping pins), and 35-37 (octal PSRAM).
@@ -47,6 +54,7 @@
 // First boot opens a setup network: Esp32-Agent / agent-setup.
 // Open http://192.168.4.1 — once Wi-Fi joins, also http://esp32-agent.local.
 
+#include "AgentDial.h"
 #include "ChatClient.h"
 #include "Config.h"
 #include "Feedback.h"
@@ -72,6 +80,7 @@ void setup() {
   wakeWord.begin();
   mic.begin();
   voiceFlow.begin();
+  agentDial.begin();
   webUi.begin();
 
   Serial.println("Ready");
@@ -81,6 +90,8 @@ void loop() {
   portal.update();
   chatClient.update();
   voiceFlow.update();
+  // After voiceFlow, so a recording that just ended frees any held beep.
+  agentDial.update();
   feedback.follow(chatClient.phase(), voiceFlow.holdingLed());
   webUi.handle();
 }

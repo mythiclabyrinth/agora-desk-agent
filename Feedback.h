@@ -20,6 +20,9 @@ class Feedback {
   // Mute button: one short beep when muting (or dropping a recording), two
   // when unmuting.
   void muteToggled(bool muted);
+  // The dial's "which agent": `position` evenly spaced short beeps (claude 1,
+  // cursor 2, codex 3), so the choice can be told by ear.
+  void agentCue(uint8_t position);
   // The blue LED: lit whenever the board's mic is listening.
   void listenLed(bool on);
 
