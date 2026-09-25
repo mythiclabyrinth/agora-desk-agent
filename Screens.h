@@ -20,7 +20,6 @@ struct DeskView {
   bool wakeEnabled = false;
   bool wakeArmed = false;
   const char *wakePhrase = "";
-  float cutoff = 0;  // the wake word's, 0-1
 
   DeskActivity activity = DeskActivity::None;
   const char *source = "";         // Recording: btn | wake | page
@@ -48,12 +47,6 @@ inline String glyphText(char glyph, const char *text) {
   return fitText(s, LCD_COLS);
 }
 
-inline String cutoffText(float cutoff) {
-  char text[8];
-  snprintf(text, sizeof(text), "%.2f", cutoff);
-  return String(text);
-}
-
 inline ScreenLines bootScreen() {
   return screenLines(fitText("Desk agent", LCD_COLS), fitText("starting...", LCD_COLS));
 }
@@ -75,7 +68,7 @@ inline ScreenLines restingScreen(const DeskView &v) {
   String bottom;
   if (!v.wifi || !v.wakeAvailable) bottom = fitText(v.address, LCD_COLS);
   else if (!v.wakeEnabled) bottom = fitText("Muted", LCD_COLS);
-  else bottom = alignEnds(v.wakePhrase, cutoffText(v.cutoff), LCD_COLS);
+  else bottom = fitText(v.wakePhrase, LCD_COLS);
   return screenLines(alignEnds(v.agent, icons, LCD_COLS), bottom);
 }
 
