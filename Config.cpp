@@ -1,5 +1,8 @@
 #include "Config.h"
 
+#include "Board.h"
+#include "Wake.h"
+
 namespace {
 
 struct AgentDefaults {
@@ -32,6 +35,10 @@ String orDefault(const String &value, const char *fallback) {
   return value.length() ? value : String(fallback);
 }
 
+uint8_t clampCutoff(uint8_t cutoff) {
+  return wakeCutoffByte(cutoff / 255.0f);
+}
+
 const AgentDefaults *defaultsFor(AgentKind kind) {
   switch (kind) {
     case AgentKind::Claude: return &kAgents[0];
@@ -48,8 +55,7 @@ ConfigStore configStore;
 void ConfigStore::begin() {
   _prefs.begin("esp32agent", false);
   _wake.enabled = _prefs.getBool("wake_on", false);
-  _wake.sensitivity = _prefs.getString("wake_sens", "medium");
-  if (!wakeSensitivityKnown(_wake.sensitivity)) _wake.sensitivity = "medium";
+  _wake.cutoff = clampCutoff(_prefs.getUChar("wake_cut", WakeWord::modelCutoff()));
   _voiceAgentSaved = _prefs.getString("voice_ag", "");
   _voiceAgent = parseAgent(_voiceAgentSaved) == AgentKind::Unknown ? String(DEFAULT_VOICE_AGENT) : _voiceAgentSaved;
 }
@@ -232,14 +238,16 @@ bool ConfigStore::saveVoiceKey(const String &provider, const String &key) {
   return true;
 }
 
-bool wakeSensitivityKnown(const String &level) {
-  return level == "low" || level == "medium" || level == "high";
+uint8_t wakeCutoffByte(float cutoff) {
+  if (cutoff < WAKE_CUTOFF_MIN) cutoff = WAKE_CUTOFF_MIN;
+  if (cutoff > WAKE_CUTOFF_MAX) cutoff = WAKE_CUTOFF_MAX;
+  return static_cast<uint8_t>(cutoff * 255.0f + 0.5f);
 }
 
 void ConfigStore::saveWake(const WakeSettings &in) {
-  String level = wakeSensitivityKnown(in.sensitivity) ? in.sensitivity : String("medium");
+  uint8_t cutoff = clampCutoff(in.cutoff);
   if (in.enabled != _wake.enabled) _prefs.putBool("wake_on", in.enabled);
-  if (level != _wake.sensitivity) _prefs.putString("wake_sens", level.c_str());
+  if (cutoff != _wake.cutoff) _prefs.putUChar("wake_cut", cutoff);
   _wake.enabled = in.enabled;
-  _wake.sensitivity = level;
+  _wake.cutoff = cutoff;
 }

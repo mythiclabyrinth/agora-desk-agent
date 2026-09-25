@@ -232,6 +232,34 @@ inline bool jsonTopLong(const String &json, const char *key, long long &out) {
   return true;
 }
 
+struct JsonTopFloat {
+  const char *key;
+  float value = 0;
+  bool found = false;
+};
+
+inline bool jsonTakeFloat(const String &key, const String &json, int &i, void *ctx) {
+  auto *hit = static_cast<JsonTopFloat *>(ctx);
+  if (key != hit->key) return false;
+  jsonSkipWs(json, i);
+  if (i >= (int)json.length()) return true;
+  char c = json[i];
+  if (!(c == '-' || (c >= '0' && c <= '9'))) return true;
+  char *end = nullptr;
+  hit->value = strtof(json.c_str() + i, &end);
+  hit->found = end != json.c_str() + i;
+  i = end - json.c_str();
+  return true;
+}
+
+inline bool jsonTopFloat(const String &json, const char *key, float &out) {
+  JsonTopFloat hit;
+  hit.key = key;
+  if (!jsonForEachTopField(json, jsonTakeFloat, &hit) || !hit.found) return false;
+  out = hit.value;
+  return true;
+}
+
 struct JsonTopBool {
   const char *key;
   bool value = false;

@@ -30,7 +30,7 @@ VOICE = dict(keys=dict(groq=False, openai=False), stt_provider='groq', tts_provi
              tts_models=dict(groq='canopylabs/orpheus-v1-english', openai='gpt-4o-mini-tts'),
              tts_voices=dict(groq='autumn', openai='alloy'), accent='american', agent='claude',
              stt_ready=False, tts_ready=False, mic=True, speaker=True, button_pin=6,
-             wake_enabled=False, wake_sensitivity='medium', wake_available=True, wake_phrase='Hey Jarvis',
+             wake_enabled=False, wake_cutoff=0.97, wake_available=True, wake_phrase='Hey Jarvis',
              listen_led_pin=18)
 # ?scenario=voice walks the button flow: recording -> transcribing -> waiting -> speaking -> done.
 # The chat mic button drives the same steps from /api/voice/talk.
@@ -54,9 +54,16 @@ def agent_ready(a, scenario):
 def wake_status(armed=True, score=0.0):
     on = VOICE['wake_enabled'] and VOICE['wake_available']
     return dict(enabled=VOICE['wake_enabled'], muted=not VOICE['wake_enabled'], available=VOICE['wake_available'],
-                armed=on and armed, sensitivity=VOICE['wake_sensitivity'], phrase=VOICE['wake_phrase'],
+                armed=on and armed, cutoff=VOICE['wake_cutoff'], phrase=VOICE['wake_phrase'],
                 score=round(score if on and armed else 0.0, 2),
                 peak=round(min(1.0, score * 1.5) if on and armed else 0.0, 2))
+
+
+CUTOFF_RANGE = 'Wake cutoff must be between 0.50 and 0.99.'
+
+
+def cutoff_ok(value):
+    return isinstance(value, (int, float)) and not isinstance(value, bool) and 0.499 <= value <= 0.991
 
 
 def voice_ready():
@@ -107,7 +114,8 @@ class Handler(BaseHTTPRequestHandler):
                 VOICE['agent'] = DIAL_CYCLE[int(time.time() / DIAL_EVERY_S) % len(DIAL_CYCLE)]
             # agent: this exchange's; target_agent: the hands-free setting (talk button, wake word, dial).
             voice = dict(state='idle', source='button', job=0, agent='claude', target_agent=VOICE['agent'], recorded_ms=0,
-                         stt_ready=VOICE['stt_ready'], tts_ready=VOICE['tts_ready'], mic=True, speaker=True)
+                         stt_ready=VOICE['stt_ready'], tts_ready=VOICE['tts_ready'], mic=True, speaker=True,
+                         cancelled=False)
             voice['wake'] = wake_status(score=0.02 + 0.03 * abs(math.sin(time.time())))
             if 'scenario=wake' in scenario:
                 if not WAKE_RUN['started']:
@@ -210,16 +218,18 @@ class Handler(BaseHTTPRequestHandler):
                          tts_voices=dict(groq=data['voice_groq'], openai=data['voice_openai']))
             if 'wake_enabled' in data:
                 VOICE['wake_enabled'] = bool(data['wake_enabled'])
-            if data.get('wake_sensitivity') in ('low', 'medium', 'high'):
-                VOICE['wake_sensitivity'] = data['wake_sensitivity']
+            if 'wake_cutoff' in data:
+                if not cutoff_ok(data['wake_cutoff']):
+                    return self.reply({'error':CUTOFF_RANGE},400)
+                VOICE['wake_cutoff'] = round(float(data['wake_cutoff']), 2)
             voice_ready()
             self.reply({'ok':True,'stt_ready':VOICE['stt_ready'],'tts_ready':VOICE['tts_ready']})
         elif self.path == '/api/voice/wake':
-            # The page's wake toggle and sensitivity; the same setting as the desk dial's long press.
-            if 'sensitivity' in data:
-                if data['sensitivity'] not in ('low', 'medium', 'high'):
-                    return self.reply({'error':'Sensitivity must be low, medium, or high.'},400)
-                VOICE['wake_sensitivity'] = data['sensitivity']
+            # The page's wake toggle (the same setting as the desk dial's long press) and cutoff slider.
+            if 'cutoff' in data:
+                if not cutoff_ok(data['cutoff']):
+                    return self.reply({'error':CUTOFF_RANGE},400)
+                VOICE['wake_cutoff'] = round(float(data['cutoff']), 2)
             if 'enabled' in data:
                 if data['enabled'] and not VOICE['wake_available']:
                     return self.reply({'error':'The wake word could not start on this board (see the serial log). The talk button still works.'},409)

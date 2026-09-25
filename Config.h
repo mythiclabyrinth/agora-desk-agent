@@ -55,10 +55,12 @@ bool voiceAccentKnown(const String &accent);
 // long press and the page both flip it, and the blue LED follows it.
 struct WakeSettings {
   bool enabled = false;
-  String sensitivity = "medium";  // low | medium | high
+  // Detector cutoff in its own 0-255 unit; ConfigStore::begin starts it at the model's.
+  uint8_t cutoff = 0;
 };
 
-bool wakeSensitivityKnown(const String &level);
+// A 0-1 cutoff in the detector's unit, clamped to WAKE_CUTOFF_MIN..MAX (Board.h).
+uint8_t wakeCutoffByte(float cutoff);
 
 class ConfigStore {
  public:

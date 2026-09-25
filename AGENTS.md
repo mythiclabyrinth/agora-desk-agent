@@ -47,14 +47,14 @@ The page talks to the firmware only through the JSON API in `WebUi.cpp`:
 
 | Route | Purpose |
 | --- | --- |
-| `GET /api/status` | Wi-Fi, agents summary, voice state (polled every few seconds); `voice.agent` is the current exchange's agent, `voice.target_agent` the hands-free setting (dial); `display.present` whether an LCD answered |
+| `GET /api/status` | Wi-Fi, agents summary, voice state (polled every few seconds); `voice.agent` is the current exchange's agent, `voice.target_agent` the hands-free setting (dial), `voice.cancelled` a recording the user dropped; `display.present` whether an LCD answered |
 | `GET /api/listen` | state of the current chat job |
 | `POST /api/chat` | `{agent, text, speak}` → starts a job |
 | `GET/POST /api/agents` | per-agent settings (token is write-only) |
 | `POST /api/wifi`, `GET /api/wifi/scan` | join / scan |
 | `GET/POST /api/voice`, `POST /api/voice/keys`, `POST /api/voice/test` | voice settings; keys write-only; POST fields are optional and the page sends `agent` only when picked, so it never undoes a dial turn |
 | `POST /api/voice/talk` | `{action: start\|stop, agent}` drives the board mic from the page |
-| `POST /api/voice/wake` | `{enabled?, sensitivity?}` wake word on/off (= the dial's long press) and low\|medium\|high; allowed mid-exchange → `{wake}` |
+| `POST /api/voice/wake` | `{enabled?, cutoff?}` wake word on/off (= the dial's long press) and the detector cutoff, 0.50–0.99; allowed mid-exchange → `{wake}` |
 | `POST /api/voice/transcribe` | multipart clip from the browser mic → `{text}` |
 | `POST /api/voice/say` | `{text}` → finite WAV for the browser to play |
 | `POST /api/voice/tone` | a second of 440 Hz through the desk speaker; checks the amp without a provider |
@@ -77,7 +77,7 @@ Adding a field: add it to the firmware handler, the page, **and**
   uploaded clips) goes in PSRAM via `heap_caps_malloc(..., MALLOC_CAP_SPIRAM)`
   with a fallback to heap and a hard cap. Check `ESP.getFreeHeap()` before big
   network calls, as `ChatClient` does.
-- **JSON**: `Json.h` is a minimal reader (top-level strings/longs/bools and the
+- **JSON**: `Json.h` is a minimal reader (top-level strings/numbers/bools and the
   Agora `messages` array). Responses are built by string concatenation; escape
   every user value with `jsonEscape`.
 - **Web JS**: classic scripts concatenated in the order `index.html` lists them,
@@ -149,6 +149,12 @@ Adding a field: add it to the firmware handler, the page, **and**
 - **Wake settings are cached** in `ConfigStore` (`wake()`), because `loop()`
   reads them every pass; `wake_enabled` is the single source of truth for the
   dial's long press, the page toggle and the blue LED (LED = armed or recording).
+  The cutoff is stored in the detector's 0-255 unit and shown as 0-1; every
+  write clamps it to `WAKE_CUTOFF_MIN..MAX`.
+- **The talk button clicks during a wake or page recording.** `ClickCounter`
+  (`Button.h`) sends on a single click once `TALK_DOUBLE_CLICK_MS` passes and
+  cancels on a double; neither press starts a button recording. Outside those
+  recordings it is push-to-talk.
 - **Hands-free clips without speech are never sent** (Whisper turns silence
   into "Thank you."). VAD and wake thresholds live in `Board.h`; they are
   untuned on real hardware.

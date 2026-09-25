@@ -105,6 +105,8 @@ bool StatusScreen::checkVoice() {
     VoiceStatus s = voiceFlow.status();
     if (s.missed) notify(missedNotice(), NOTICE_MISSED_MS);
     else notify(errorNotice(s.error), NOTICE_ERROR_MS);
+  } else if (phase == VoicePhase::Idle && voiceFlow.status().cancelled) {
+    notify(cancelledNotice(), NOTICE_MISSED_MS);
   }
   return true;
 }
@@ -146,7 +148,7 @@ void StatusScreen::showMain(unsigned long now) {
   v.wakeEnabled = wake.enabled;
   v.wakeArmed = voiceFlow.wakeArmed();
   v.wakePhrase = wakeWord.phrase();
-  v.sensitivity = wake.sensitivity.c_str();
+  v.cutoff = wake.cutoff / 255.0f;
   v.activityAgent = _chatAgent;
   switch (_voicePhase) {
     case VoicePhase::Recording: {

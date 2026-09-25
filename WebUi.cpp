@@ -77,6 +77,13 @@ bool validModel(const String &value, size_t maxLen) {
   return true;
 }
 
+// The slider sends two decimals; the slack absorbs 0.99 arriving as 0.9900001.
+bool validCutoff(float cutoff) {
+  return cutoff >= WAKE_CUTOFF_MIN - 0.001f && cutoff <= WAKE_CUTOFF_MAX + 0.001f;
+}
+
+constexpr char kCutoffRange[] = "Wake cutoff must be between 0.50 and 0.99.";
+
 const AgentKind kKinds[] = {AgentKind::Claude, AgentKind::Cursor, AgentKind::Codex};
 
 }  // namespace
@@ -207,6 +214,8 @@ void WebUi::handleStatus() {
     body += jsonEscape(voice.reply);
     body += '"';
   }
+  body += ",\"cancelled\":";
+  body += voice.cancelled ? "true" : "false";
   if (voice.error.length()) {
     body += ",\"error\":\"";
     body += jsonEscape(voice.error);
@@ -437,9 +446,9 @@ void WebUi::handleVoiceGet() {
   const WakeSettings &wake = configStore.wake();
   body += ",\"wake_enabled\":";
   body += wake.enabled ? "true" : "false";
-  body += ",\"wake_sensitivity\":\"";
-  body += jsonEscape(wake.sensitivity);
-  body += "\",\"wake_available\":";
+  body += ",\"wake_cutoff\":";
+  body += String(wake.cutoff / 255.0f, 2);
+  body += ",\"wake_available\":";
   body += wakeWord.available() ? "true" : "false";
   body += ",\"wake_phrase\":\"";
   body += jsonEscape(wakeWord.phrase());
@@ -449,8 +458,8 @@ void WebUi::handleVoiceGet() {
   sendJson(200, body);
 }
 
-// {enabled, available, armed, muted, phrase, score, peak}: what the page needs
-// to draw the wake-word section and the tuning meter.
+// {enabled, available, armed, muted, cutoff, phrase, score, peak}: what the
+// page needs to draw the wake-word section and the tuning meter.
 String WebUi::wakeJson() {
   bool enabled = configStore.wake().enabled;
   String body = "{\"enabled\":";
@@ -461,9 +470,9 @@ String WebUi::wakeJson() {
   body += wakeWord.available() ? "true" : "false";
   body += ",\"armed\":";
   body += voiceFlow.wakeArmed() ? "true" : "false";
-  body += ",\"sensitivity\":\"";
-  body += jsonEscape(configStore.wake().sensitivity);
-  body += "\",\"phrase\":\"";
+  body += ",\"cutoff\":";
+  body += String(configStore.wake().cutoff / 255.0f, 2);
+  body += ",\"phrase\":\"";
   body += jsonEscape(wakeWord.phrase());
   body += "\",\"score\":";
   body += String(wakeWord.score(), 2);
@@ -473,20 +482,19 @@ String WebUi::wakeJson() {
   return body;
 }
 
-// {enabled?, sensitivity?}: the page's wake toggle (the same setting as the
-// dial's long press) and sensitivity. Allowed mid-exchange, unlike /api/voice.
+// {enabled?, cutoff?}: the page's wake toggle (the same setting as the dial's
+// long press) and cutoff slider. Allowed mid-exchange, unlike /api/voice.
 void WebUi::handleVoiceWake() {
   String body = _server.arg("plain");
   bool enabled = false;
-  String level;
+  float cutoff = 0;
   bool sentEnabled = jsonTopBool(body, "enabled", enabled);
-  bool sentLevel = jsonTopString(body, "sensitivity", level);
-  level.trim();
-  if (sentLevel && !wakeSensitivityKnown(level)) {
-    sendError(400, "Sensitivity must be low, medium, or high.");
+  bool sentCutoff = jsonTopFloat(body, "cutoff", cutoff);
+  if (sentCutoff && !validCutoff(cutoff)) {
+    sendError(400, kCutoffRange);
     return;
   }
-  if (sentLevel) voiceFlow.setWakeSensitivity(level);
+  if (sentCutoff) voiceFlow.setWakeCutoff(wakeCutoffByte(cutoff));
   String error;
   if (sentEnabled && !voiceFlow.setWakeEnabled(enabled, error)) {
     sendError(409, error.c_str());
@@ -547,11 +555,10 @@ void WebUi::handleVoicePost() {
     sendError(400, "Choose which agent the desk should reach hands-free.");
     return;
   }
-  String wakeLevel;
-  bool sentWakeLevel = jsonTopString(body, "wake_sensitivity", wakeLevel);
-  wakeLevel.trim();
-  if (sentWakeLevel && !wakeSensitivityKnown(wakeLevel)) {
-    sendError(400, "Wake sensitivity must be low, medium, or high.");
+  float wakeCutoff = 0;
+  bool sentWakeCutoff = jsonTopFloat(body, "wake_cutoff", wakeCutoff);
+  if (sentWakeCutoff && !validCutoff(wakeCutoff)) {
+    sendError(400, kCutoffRange);
     return;
   }
   bool wakeOn = false;
@@ -562,7 +569,7 @@ void WebUi::handleVoicePost() {
       return;
     }
   }
-  if (sentWakeLevel) voiceFlow.setWakeSensitivity(wakeLevel);
+  if (sentWakeCutoff) voiceFlow.setWakeCutoff(wakeCutoffByte(wakeCutoff));
   configStore.saveVoiceFeatures(in);
   VoiceSettings saved = configStore.voice();
   String response = "{\"ok\":true,\"stt_ready\":";

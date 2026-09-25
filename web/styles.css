@@ -2103,10 +2103,44 @@ select:focus-visible {
   gap: 12px;
 }
 .wake-meter {
+  position: relative;
   height: 8px;
   border-radius: 99px;
   background: var(--soft);
   overflow: hidden;
+}
+.wake-tick {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  margin-left: -1px;
+  background: var(--ink);
+}
+.wake-cutoff {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.wake-cutoff input {
+  flex: 1;
+  padding: 0;
+  border: 0;
+  background: none;
+  accent-color: var(--accent);
+}
+.wake-cutoff output {
+  min-width: 3.5ch;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+.wake-ends {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 10px;
+  font-weight: 400;
+  color: var(--muted);
 }
 .wake-meter span {
   display: block;

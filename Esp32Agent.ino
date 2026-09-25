@@ -12,7 +12,8 @@
 //
 // Hands-free: unless muted, say the wake phrase, wait for two beeps, speak,
 // and pause. A microWakeWord model runs on the board (WakeModel.h) and an
-// energy VAD ends the recording.
+// energy VAD ends the recording; click the talk button once to send it now,
+// twice to cancel it (the same goes for a recording started from the page).
 //
 // The talk button and the wake word reach the hands-free agent. The rotary
 // dial sets it: turn to cycle through the configured agents (it beeps the

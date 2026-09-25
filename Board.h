@@ -22,6 +22,9 @@ constexpr unsigned long BUTTON_DEBOUNCE_MS = 40;
 constexpr uint8_t BUZZER_PIN = 4;
 
 constexpr uint8_t TALK_BUTTON_PIN = 6;
+// During a hands-free or page recording, one click sends it and two cancel
+// it; a click is single once this long passes without a second press.
+constexpr unsigned long TALK_DOUBLE_CLICK_MS = 350;
 // Blue LED, lit while the mic listens (wake word armed, or recording). It
 // drops ~3 V, so from a 3.3 V pin it needs 47-100 ohm, not 220-330.
 constexpr uint8_t LISTEN_LED_PIN = 18;
@@ -87,9 +90,9 @@ constexpr uint8_t MIC_TASK_CORE = 0;
 constexpr uint8_t MIC_TASK_PRIORITY = 5;
 constexpr uint32_t MIC_TASK_STACK = 8192;
 
-// Wake word. The model's own cutoff (WakeModel.h) is "medium"; low and high
-// move it by this much, clamped to the range below.
-constexpr float WAKE_CUTOFF_SHIFT = 0.04f;
+// Wake word. It fires when the mean of the model's last few probabilities
+// passes a cutoff: the model's own (WakeModel.h) until the page's slider
+// sets one, always within this range.
 constexpr float WAKE_CUTOFF_MIN = 0.50f;
 constexpr float WAKE_CUTOFF_MAX = 0.99f;
 // After a detection the detector ignores the phrase's own tail.

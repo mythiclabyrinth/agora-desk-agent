@@ -33,9 +33,11 @@ function syncComposer() {
               ? voiceBanner(voiceState)
               : boardBusy
                 ? 'The board is busy listening.'
-                : a?.ready
-                  ? 'Ready for your next message.'
-                  : 'Set up this agent to start a conversation.',
+                : Date.now() - voiceCancelledAt < 5000
+                  ? 'Cancelled at the desk. Nothing was sent.'
+                  : a?.ready
+                    ? 'Ready for your next message.'
+                    : 'Set up this agent to start a conversation.',
     );
 }
 function resizeComposer() {
