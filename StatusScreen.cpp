@@ -148,7 +148,6 @@ void StatusScreen::showMain(unsigned long now) {
   v.wakeEnabled = wake.enabled;
   v.wakeArmed = voiceFlow.wakeArmed();
   v.wakePhrase = wakeWord.phrase();
-  v.cutoff = wake.cutoff / 255.0f;
   v.activityAgent = _chatAgent;
   switch (_voicePhase) {
     case VoicePhase::Recording: {
