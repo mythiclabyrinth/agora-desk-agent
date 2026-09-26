@@ -56,7 +56,7 @@ bool voiceAccentKnown(const String &accent);
 bool voiceLanguageValid(const String &language);
 
 // Wake-word listening. `enabled` is the single source of truth: the dial's
-// long press and the page both flip it, and the blue LED follows it.
+// long press and the page both flip it, and the RGB light follows it.
 struct WakeSettings {
   bool enabled = false;
   // Detector cutoff in its own 0-255 unit; ConfigStore::begin starts it at the model's.

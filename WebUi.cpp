@@ -593,9 +593,7 @@ void WebUi::handleVoiceGet() {
   body += wakeWord.available() ? "true" : "false";
   body += ",\"wake_phrase\":\"";
   body += jsonEscape(wakeWord.phrase());
-  body += "\",\"listen_led_pin\":";
-  body += String(LISTEN_LED_PIN);
-  body += '}';
+  body += "\"}";
   sendJson(200, body);
 }
 

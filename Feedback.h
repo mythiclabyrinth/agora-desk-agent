@@ -24,8 +24,6 @@ class Feedback {
   void muteToggled(bool muted);
   // The dial's "which agent" cue: `position` evenly spaced short beeps.
   void agentCue(uint8_t position);
-  // The blue LED: lit whenever the board's mic is listening.
-  void listenLed(bool on);
 
  private:
   void attention();
@@ -34,7 +32,6 @@ class Feedback {
 
   Phase _phase = Phase::Idle;
   bool _quietSuccess = false;
-  int8_t _listenLed = -1;  // unknown until the first listenLed() call
 };
 
 extern Feedback feedback;

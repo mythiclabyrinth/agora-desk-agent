@@ -172,7 +172,6 @@ bool VoiceFlow::beginRecording(const String &agentKey, VoiceSource source, Strin
   _error = "";
   _recordedMs = 0;
   setPhase(VoicePhase::Recording);
-  feedback.listenLed(true);
   if (source == VoiceSource::Wake) {
     feedback.wakeChime();
     // Judge speech only from after the chime (and its hangover) onward.
@@ -223,7 +222,6 @@ bool VoiceFlow::setWakeEnabled(bool on, String &error) {
     // Muting takes effect now, not on the next loop pass.
     _wakeArmed = false;
     wakeWord.setArmed(false);
-    if (_phase != VoicePhase::Recording) feedback.listenLed(false);
   }
   return true;
 }
@@ -248,7 +246,6 @@ void VoiceFlow::toggleMute() {
     _recordedMs = 0;
     Serial.println("Voice: muted, recording discarded");
     setWakeEnabled(false, error);
-    feedback.listenLed(false);
     feedback.follow(chatClient.phase());
     feedback.muteToggled(true);
     return;
@@ -282,9 +279,6 @@ void VoiceFlow::updateWake() {
              wakeReady();
   _wakeArmed = arm;
   wakeWord.setArmed(arm);
-  // The blue LED follows the arming policy, not the brief deaf windows after
-  // a beep, so it does not flicker. Any recording lights it, even when muted.
-  feedback.listenLed(arm || _phase == VoicePhase::Recording);
 
   // A tuning trace: quiet in a silent room, one line a second while the
   // model reacts to something.

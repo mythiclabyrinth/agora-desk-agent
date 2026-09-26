@@ -30,9 +30,10 @@ use voice, a Groq and/or OpenAI key for speech.
 - **Feedback** — the buzzer chirps once when a message goes out, plays two
   notes when the reply lands (unless the talk button or wake word asked, where
   the spoken reply is the signal) and three short beeps on failure; the LCD
-  shows the wait in between. The board's own RGB LED is amber while the mic
-  is open, flashes white as the message goes out, breathes violet while the
-  desk waits, and ends green or red.
+  shows the wait in between. The board's own RGB LED is blue while the mic
+  listens for the wake word, amber while it is open, flashes white as the
+  message goes out, breathes violet while the desk waits, ends green or red,
+  and returns to blue or dark.
 - **Voice (optional hardware)** — hold the talk button, speak, let go: the
   INMP441 clip is transcribed (Groq Whisper or OpenAI, in the language set under
   Settings › Voice or auto-detected), sent to the agent, and
@@ -45,7 +46,7 @@ use voice, a Groq and/or OpenAI key for speech.
   the recording when you stop talking and drops it if you said nothing. A slider
   under Settings › Voice › Devices sets the cutoff the detector's score must
   pass (lower hears you from further away, higher wakes falsely less). Holding the dial's knob (or Settings › Voice) mutes and
-  unmutes it, and a **blue LED** is lit whenever the board's mic is listening.
+  unmutes it, and the board's RGB LED is **blue** whenever its mic is listening.
   The wake word is deaf while the board beeps or speaks. To train a "Hey Agora"
   model, see [tools/wake/README.md](tools/wake/README.md).
 - **Hands-free agent and the dial** — the talk button and the wake word reach
@@ -75,21 +76,19 @@ ESP32-S3 dev module with 8 MB PSRAM and 16 MB flash. Pins are in `Board.h`.
 | --- | --- |
 | Active buzzer | GPIO 4 → buzzer → GND |
 | Talk button | GPIO 6 → button → GND (internal pull-up) |
-| Blue listening LED | GPIO 18 → 47–100 Ω → LED → GND |
 | KY-040 rotary dial | CLK 9, DT 10, SW 3, **+ → 3V3 (not 5V)**, GND → GND |
 | INMP441 microphone | SCK 12, WS 11, SD 13, L/R → GND, VDD 3V3 |
 | MAX98357A amplifier | BCLK 16, LRC 15, DIN 17, VIN 5V, 4 Ω speaker on +/− |
 | 16x2 LCD, PCF8574 I2C backpack | SDA 8, SCL 7, VCC 5V, GND |
 
-Free pins: GPIO 5 and GPIO 46. GPIO 46 is a strapping pin that must not be
+Free pins: GPIO 5, GPIO 18 and GPIO 46. GPIO 46 is a strapping pin that must not be
 pulled high while GPIO 0 is low (uploads would fail): a plain button to GND is
 safe there, a part with a pull-up resistor is not.
 
 Power the KY-040 from 3V3: its pull-ups go to "+", and the ESP32-S3's GPIOs are
 not 5 V tolerant. If clockwise selects the previous agent, set `DIAL_REVERSE` in
 `Board.h`; if one click moves two agents or every other click is ignored, adjust
-`DIAL_STEPS_PER_DETENT`. The blue LED needs a small resistor (47–100 Ω) or it
-barely glows. The LCD backpack needs 5V for contrast, which also puts its I2C
+`DIAL_STEPS_PER_DETENT`. The LCD backpack needs 5V for contrast, which also puts its I2C
 pull-ups at 5V: remove them and fit 4.7 kΩ from SDA and SCL to 3V3, or use a
 BSS138 level shifter. The board looks for the backpack at 0x27 and 0x3F; turn
 its contrast pot if the screen is lit but blank. All of this hardware is
@@ -177,8 +176,8 @@ WebUi.*          HTTP routes and JSON API
 ChatClient.*     post to Agora, wait for the agent's reply (socket, else polling)
 AgoraSocket.*    Agora's UI WebSocket: pushes the reply the moment it lands
 ReplyWatch.h     which message answers a chat job (poll and socket)
-Feedback.*       buzzer patterns and the listening LED
-StatusLight.*    the board's own RGB LED: amber while the mic is open, white as a message goes out, breathing violet while waiting, green or red at the end
+Feedback.*       buzzer patterns
+StatusLight.*    the board's own RGB LED: blue while listening, amber while the mic is open, white as a message goes out, breathing violet while waiting, green or red at the end
 Display.*        16x2 I2C LCD: drawing task, diffed redraws, notices, backlight
 StatusScreen.*   what the LCD shows: polls the desk's state, raises notices
 Screens.h        every LCD layout, as pure functions
