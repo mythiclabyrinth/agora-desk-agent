@@ -25,6 +25,18 @@ forwarded to a board, and demo saves last only until the process stops.
   fallback.
 - Wi-Fi scanning and joining use demo data only.
 - Send a message containing `preview-error` to simulate a failed send.
+
+### Responsive checks
+
+Check Overview, Conversations, all Settings categories, and the Wi-Fi dialog at
+900×510 and 1024×600 (short captive-portal windows), 720×500, 390×844,
+320×568, and 1440×900. Use both Chromium and WebKit, including `?scenario=offline`:
+the notice's **Connect Wi-Fi** action opens network selection directly. Check
+that controls wrap without horizontal scrolling, the chat composer stays visible
+in short laptop windows, and dialog actions remain reachable by scrolling.
+Short windows use compact spacing; short windows up to 1100px wide use top
+navigation. The conversation log takes the remaining space below the actual
+header and status notice rather than subtracting a fixed page height.
 - Other messages receive an explicitly labeled demo response after four seconds.
 - Voice: save any `gsk_…` key under Settings › Voice; transcription returns a fixed
   sentence and speech is a short two-tone chime. `localhost` counts as a secure origin,

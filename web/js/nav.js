@@ -1,6 +1,7 @@
 // Tabs, settings sub-tabs, and the static navigation wiring.
 function showTab(name, focus = false) {
   if (!['home', 'chat', 'settings'].includes(name)) name = 'home';
+  const changed = $('#' + name).hidden;
   ['home', 'chat', 'settings'].forEach((t) => {
     $('#' + t).hidden = t !== name;
     const b = $('[data-tab="' + t + '"]');
@@ -12,6 +13,7 @@ function showTab(name, focus = false) {
   if (name === 'chat') renderChat();
   if (name === 'settings' && !settingsBuilt) renderAgents();
   if (location.hash !== '#' + name) history.replaceState(null, '', '#' + name);
+  if (changed) window.scrollTo({ top: 0, behavior: 'instant' });
   if (focus) $('#main').focus({ preventScroll: true });
 }
 function showSub(name) {
@@ -58,6 +60,11 @@ window.addEventListener('hashchange', () => showTab(location.hash.slice(1)));
 $('#manage-agents').addEventListener('click', () => openSettings());
 $('#chat-settings').addEventListener('click', () => openSettings(current));
 $('#start-chat').addEventListener('click', () => showTab('chat'));
+$('#connect-wifi').addEventListener('click', () => {
+  showTab('settings');
+  showSub('wifi');
+  $('#choose-network').click();
+});
 $('#retry').addEventListener('click', () => {
   refreshStatus();
   loadAgents().catch((e) => banner(e.message, true));

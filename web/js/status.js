@@ -93,6 +93,8 @@ async function refreshStatus() {
             : !online
               ? 'Your board is available. Connect it to Wi-Fi in Settings to send messages.'
               : '',
+        false,
+        !online && !voiceBusy && !boardBusy,
       );
     syncComposer();
   } catch (e) {
