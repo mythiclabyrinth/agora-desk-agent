@@ -148,7 +148,16 @@ bool Portal::join(const String &ssid, const String &password, unsigned long time
   return WiFi.status() == WL_CONNECTED;
 }
 
+void Portal::forget() {
+  _forgetAt = millis() + WIFI_FORGET_DELAY_MS;
+}
+
 void Portal::update() {
+  if (_forgetAt && static_cast<long>(millis() - _forgetAt) >= 0) {
+    _forgetAt = 0;
+    WiFi.disconnect(false, false);
+    Serial.println("Wi-Fi forgotten; setup network only");
+  }
   if (WiFi.status() == WL_CONNECTED) {
     if (_dnsOn) {
       _dns.stop();

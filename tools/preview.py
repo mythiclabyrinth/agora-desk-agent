@@ -220,6 +220,9 @@ class Handler(BaseHTTPRequestHandler):
             self.reply({'ok':True,'ready':True})
         elif self.path == '/api/wifi':
             self.reply({'ok':True,'connected':True,'ip':'192.168.0.113'})
+        elif self.path == '/api/wifi/forget':
+            time.sleep(0.5)
+            self.reply({'ok':True,'ap_ip':'192.168.4.1'})
         elif self.path == '/api/voice':
             # Like the board, every field is optional; the page sends agent only when it was picked there.
             if 'agent' in data:

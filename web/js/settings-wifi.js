@@ -109,6 +109,38 @@ $('#choose-network').addEventListener('click', () => {
   $('#wifi-title').focus();
   scanNetworks();
 });
+// Clears the saved network and password on the board; it then answers only on its setup network.
+$('#forget-network').addEventListener('click', async () => {
+  const ssid = savedSsid || 'this network';
+  if (
+    !confirm(
+      'Forget ' +
+        ssid +
+        '? The board clears the saved password and drops off Wi-Fi. To set it up again, join Esp32-Agent (password agent-setup) and open http://192.168.4.1.',
+    )
+  )
+    return;
+  $('#forget-network').disabled = true;
+  note($('#wifi-note'), 'Forgetting ' + ssid + '…');
+  try {
+    const data = await api('/api/wifi/forget', {});
+    savedSsid = '';
+    $('#wifi-current').textContent = 'No network selected';
+    $('#wifi-state').textContent = 'Ready to connect';
+    $('#forget-network').hidden = true;
+    note(
+      $('#wifi-note'),
+      'Forgotten. The board is leaving Wi-Fi; reach it on Esp32-Agent at http://' +
+        (data.ap_ip || '192.168.4.1') +
+        '/ to set it up again.',
+    );
+    $('#wifi-note').classList.add('good');
+  } catch (err) {
+    note($('#wifi-note'), err.message, true);
+  } finally {
+    $('#forget-network').disabled = false;
+  }
+});
 $('#scan').addEventListener('click', scanNetworks);
 $('#wifi-manual').addEventListener('click', () => wifiDetails(null));
 $('#wifi-back').addEventListener('click', () => wifiList());

@@ -74,6 +74,11 @@ void ConfigStore::saveWifi(const String &ssid, const String &password) {
   _prefs.putString("pass", password.c_str());
 }
 
+void ConfigStore::forgetWifi() {
+  _prefs.remove("ssid");
+  _prefs.remove("pass");
+}
+
 String ConfigStore::fieldKey(AgentKind kind, const char *suffix) {
   const AgentDefaults *defaults = defaultsFor(kind);
   String key = defaults ? defaults->key : "x";

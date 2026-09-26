@@ -119,7 +119,9 @@ If you changed anything in `web/`, run `python3 web/build.py` first (see
 1. Run the Agora server and at least one bridge (`bridges/claude-cli`, `cursor-cli`,
    `codex-cli`) on your computer, as usual.
 2. In Agora, create (or pick) a channel the agent is in.
-3. On the board's page, Settings › Wi-Fi: join your network.
+3. On the board's page, Settings › Wi-Fi: join your network. **Forget this
+   network** there clears the saved name and password and drops the board back
+   to its setup network, for when it changes hands.
 4. Settings › Agents: for each agent, enter the Agora URL (e.g.
    `http://192.168.1.20:4470`), an access token, and make sure **Agent ID**
    matches the bridge's `AGENT_ID` (the `@mention` is resolved by exact id or by

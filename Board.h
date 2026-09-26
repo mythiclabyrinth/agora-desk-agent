@@ -184,6 +184,10 @@ constexpr char MDNS_HOST[] = "esp32-agent";
 // Speaking blocks the web server; page and typed replies wait this long so the page can fetch them.
 constexpr unsigned long SPEAK_GRACE_MS = 1500;
 
+// After "forget this network", the link drops this long later so the reply
+// to that request still gets out.
+constexpr unsigned long WIFI_FORGET_DELAY_MS = 1500;
+
 constexpr unsigned long LISTEN_TIMEOUT_MS = 180000;
 // REST polling is the fallback while Agora's socket is down...
 constexpr unsigned long LISTEN_POLL_MS = 2000;

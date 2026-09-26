@@ -74,6 +74,7 @@ async function refreshStatus() {
     $('#device-ip').textContent = online ? s.ip : 'Setup · ' + (s.ap_ip || '192.168.4.1');
     savedSsid = s.ssid || '';
     $('#wifi-current').textContent = savedSsid || 'No network selected';
+    $('#forget-network').hidden = !savedSsid;
     $('#wifi-state').textContent = online
       ? 'Connected · ' + s.ip
       : savedSsid

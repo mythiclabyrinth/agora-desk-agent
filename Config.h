@@ -73,6 +73,7 @@ class ConfigStore {
   String wifiSsid();
   String wifiPassword();
   void saveWifi(const String &ssid, const String &password);
+  void forgetWifi();
 
   AgentSettings agent(AgentKind kind);
   bool saveAgent(AgentKind kind, const AgentSettings &incoming, bool keepToken);

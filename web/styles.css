@@ -1797,6 +1797,12 @@ input:focus {
 body:has(#wifi-dialog[open]) {
   overflow: hidden;
 }
+.wifi-actions-row {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  align-items: center;
+}
 .wifi-summary {
   display: flex;
   gap: 14px;

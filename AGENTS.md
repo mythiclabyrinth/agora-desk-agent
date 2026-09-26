@@ -55,6 +55,7 @@ The page talks to the firmware only through the JSON API in `WebUi.cpp`:
 | `GET/POST /api/agents` | per-agent settings (token is write-only) |
 | `POST /api/agents/{claude\|cursor\|codex}/channels` | `{url?, agent_id?, name?, token?}` (empty → saved value) → Agora's `GET /api/agents/{id}/channels` → `{agent: {id, name, live}, channels: [{id, name, group, kind}]}`, only the channels the agent belongs to; upstream failures are 502 with a sentence |
 | `POST /api/wifi`, `GET /api/wifi/scan` | join / scan |
+| `POST /api/wifi/forget` | clears the saved network and password, then drops the station link `WIFI_FORGET_DELAY_MS` later so the reply gets out; the setup network stays up → `{ap_ip}` |
 | `GET/POST /api/voice`, `POST /api/voice/keys`, `POST /api/voice/test` | voice settings; keys write-only; POST fields are optional and the page sends `agent` only when picked, so it never undoes a dial turn; `stt_language` is an ISO code (`en`) or empty for auto-detect |
 | `POST /api/voice/talk` | `{action: start\|stop, agent}` drives the board mic from the page |
 | `POST /api/voice/wake` | `{enabled?, cutoff?}` wake word on/off (= the dial's long press) and the detector cutoff, 0.50–0.99; allowed mid-exchange → `{wake}` |

@@ -8,6 +8,9 @@ class Portal {
   void begin();
   void update();
   bool join(const String &ssid, const String &password, unsigned long timeoutMs);
+  // Drops the station link shortly after the call, so the HTTP reply that
+  // asked for it still reaches the browser; the setup network stays up.
+  void forget();
   // Nearby networks as JSON. Works in AP+STA, including before the board has joined.
   String scanJson();
 
@@ -24,6 +27,7 @@ class Portal {
   bool _dnsOn = false;
   bool _mdns = false;
   unsigned long _lastReconnectAt = 0;
+  unsigned long _forgetAt = 0;
 };
 
 extern Portal portal;
