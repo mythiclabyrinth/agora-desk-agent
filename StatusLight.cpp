@@ -17,21 +17,36 @@ void StatusLight::flash(uint8_t r, uint8_t g, uint8_t b, unsigned long ms) {
   _flashUntil = millis() + ms;
 }
 
-void StatusLight::follow(Phase phase) {
-  if (phase == _phase) return;
-  Phase previous = _phase;
-  _phase = phase;
-  if (phase == Phase::Listening) {
+// The steady colour for the current state, once no flash is showing.
+void StatusLight::resting() {
+  _lastLevel = 255;
+  if (_voice == VoicePhase::Recording) show(RGB_STATUS_LEVEL, RGB_STATUS_LEVEL * 2 / 5, 0);
+  else if (_voice == VoicePhase::Transcribing) show(RGB_STATUS_LEVEL / 3, RGB_STATUS_LEVEL * 2 / 15, 0);
+  else if (_chat != Phase::Listening) show(0, 0, 0);
+  // Listening breathes from update().
+}
+
+void StatusLight::follow(Phase chat, VoicePhase voice) {
+  bool chatChanged = chat != _chat;
+  bool voiceChanged = voice != _voice;
+  if (!chatChanged && !voiceChanged) return;
+  Phase previous = _chat;
+  _chat = chat;
+  _voice = voice;
+  if (chatChanged && chat == Phase::Listening) {
     flash(RGB_STATUS_LEVEL, RGB_STATUS_LEVEL, RGB_STATUS_LEVEL, RGB_STATUS_FLASH_MS);
     _breatheFrom = millis();
-    _lastLevel = 255;
-  } else if (previous == Phase::Listening && phase == Phase::Done) {
-    flash(0, RGB_STATUS_LEVEL, 0, RGB_STATUS_DONE_MS);
-  } else if (previous == Phase::Listening && phase == Phase::Failed) {
-    flash(RGB_STATUS_LEVEL, 0, 0, RGB_STATUS_DONE_MS);
-  } else {
-    show(0, 0, 0);
+    return;
   }
+  if (chatChanged && previous == Phase::Listening && chat == Phase::Done) {
+    flash(0, RGB_STATUS_LEVEL, 0, RGB_STATUS_DONE_MS);
+    return;
+  }
+  if (chatChanged && previous == Phase::Listening && chat == Phase::Failed) {
+    flash(RGB_STATUS_LEVEL, 0, 0, RGB_STATUS_DONE_MS);
+    return;
+  }
+  if (!_flashUntil) resting();
 }
 
 void StatusLight::update() {
@@ -39,12 +54,9 @@ void StatusLight::update() {
   if (_flashUntil) {
     if (static_cast<long>(now - _flashUntil) < 0) return;
     _flashUntil = 0;
-    if (_phase != Phase::Listening) {
-      show(0, 0, 0);
-      return;
-    }
+    resting();
   }
-  if (_phase != Phase::Listening) return;
+  if (_chat != Phase::Listening || _voice == VoicePhase::Recording || _voice == VoicePhase::Transcribing) return;
   // A triangle wave between a dim floor and the full level, one cycle per
   // RGB_STATUS_BREATHE_MS; the LED is only rewritten when the level moves.
   unsigned long t = (now - _breatheFrom) % RGB_STATUS_BREATHE_MS;
@@ -53,5 +65,5 @@ void StatusLight::update() {
   uint8_t level = RGB_STATUS_FLOOR + (RGB_STATUS_LEVEL - RGB_STATUS_FLOOR) * rise / half;
   if (level == _lastLevel) return;
   _lastLevel = level;
-  show(0, level / 3, level);
+  show(level * 3 / 5, 0, level);
 }

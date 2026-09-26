@@ -100,7 +100,7 @@ void loop() {
   // After voiceFlow, so a recording that just ended frees any held beep.
   agentDial.update();
   feedback.follow(chatClient.phase());
-  statusLight.follow(chatClient.phase());
+  statusLight.follow(chatClient.phase(), voiceFlow.phase());
   statusLight.update();
   statusScreen.update();
   webUi.handle();

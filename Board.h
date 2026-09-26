@@ -63,7 +63,7 @@ constexpr int8_t AMP_BCLK_PIN = 16;   // BCLK
 constexpr int8_t AMP_LRC_PIN = 15;    // LRC
 constexpr int8_t AMP_DATA_PIN = 17;   // DIN
 
-// The DevKitC-1's own WS2812 (GPIO 48, RGB_BUILTIN) follows a chat exchange.
+// The DevKitC-1's own WS2812 (GPIO 48, RGB_BUILTIN) follows an exchange.
 // Levels are 0-255; the LED is bright, so the full level stays low.
 constexpr uint8_t RGB_STATUS_LEVEL = 40;
 constexpr uint8_t RGB_STATUS_FLOOR = 4;
