@@ -69,7 +69,7 @@ Adding a field: add it to the firmware handler, the page, **and**
 
 - **C++**: one class per concern, a global singleton per module
   (`configStore`, `portal`, `chatClient`, `agoraSocket`, `webUi`, `voiceFlow`, `audio`,
-  `speech`, `feedback`, `mic`, `wakeWord`, `dial`, `agentDial`, `display`,
+  `speech`, `feedback`, `statusLight`, `mic`, `wakeWord`, `dial`, `agentDial`, `display`,
   `statusScreen`), `begin()` in `setup()`, `update()`/`handle()` in `loop()`.
   Comments explain *why*, not what. Pins and limits live in `Board.h`; never
   hardcode a GPIO elsewhere.

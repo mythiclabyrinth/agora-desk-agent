@@ -11,7 +11,7 @@ forwarded to a board, and demo saves last only until the process stops.
 - `/?scenario=scan-error#settings`: Wi-Fi scan fails; manual entry remains available.
 - `/?scenario=voice`: watch a talk-button conversation land in the chat.
 - `/?scenario=wake`: wake listening switches on, the score meter (Settings › Voice ›
-  Devices) climbs past the cutoff line, “Hey Jarvis” is heard, the VAD ends the clip, and the exchange lands in
+  Devices) climbs past the cutoff line, “Hey Agora” is heard, the VAD ends the clip, and the exchange lands in
   the chat with the “Heard …” banner.
 - `/?scenario=dial`: Cursor counts as configured too, and the dial moves the hands-free
   agent (`voice.target_agent`) between Claude and Cursor every three seconds. The

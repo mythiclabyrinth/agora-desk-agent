@@ -32,7 +32,7 @@ VOICE = dict(keys=dict(groq=False, openai=False), stt_provider='groq', tts_provi
              tts_models=dict(groq='canopylabs/orpheus-v1-english', openai='gpt-4o-mini-tts'),
              tts_voices=dict(groq='autumn', openai='alloy'), accent='american', stt_language='en', agent='claude',
              stt_ready=False, tts_ready=False, mic=True, speaker=True, button_pin=6,
-             wake_enabled=False, wake_cutoff=0.97, wake_available=True, wake_phrase='Hey Jarvis',
+             wake_enabled=False, wake_cutoff=0.97, wake_available=True, wake_phrase='Hey Agora',
              listen_led_pin=18)
 # ?scenario=voice walks the button flow: recording -> transcribing -> waiting -> speaking -> done.
 # The chat mic button drives the same steps from /api/voice/talk.

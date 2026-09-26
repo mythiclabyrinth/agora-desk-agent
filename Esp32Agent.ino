@@ -58,6 +58,7 @@
 #include "Feedback.h"
 #include "Mic.h"
 #include "Portal.h"
+#include "StatusLight.h"
 #include "StatusScreen.h"
 #include "VoiceFlow.h"
 #include "Wake.h"
@@ -73,6 +74,7 @@ void setup() {
   Serial.println("========================");
 
   feedback.begin();
+  statusLight.begin();
   configStore.begin();
   // Before the Wi-Fi join, which can take seconds, so the boot screen shows.
   display.begin();
@@ -98,6 +100,8 @@ void loop() {
   // After voiceFlow, so a recording that just ended frees any held beep.
   agentDial.update();
   feedback.follow(chatClient.phase());
+  statusLight.follow(chatClient.phase(), voiceFlow.phase());
+  statusLight.update();
   statusScreen.update();
   webUi.handle();
 }

@@ -30,14 +30,16 @@ use voice, a Groq and/or OpenAI key for speech.
 - **Feedback** — the buzzer chirps once when a message goes out, plays two
   notes when the reply lands (unless the talk button or wake word asked, where
   the spoken reply is the signal) and three short beeps on failure; the LCD
-  shows the wait in between.
+  shows the wait in between. The board's own RGB LED is amber while the mic
+  is open, flashes white as the message goes out, breathes violet while the
+  desk waits, and ends green or red.
 - **Voice (optional hardware)** — hold the talk button, speak, let go: the
   INMP441 clip is transcribed (Groq Whisper or OpenAI, in the language set under
   Settings › Voice or auto-detected), sent to the agent, and
   the reply is read aloud through a MAX98357A speaker (Groq Orpheus or OpenAI
   TTS). Provider, model, voice and accent are picked per direction under
   Settings › Voice.
-- **Wake word (hands-free)** — say "Hey Jarvis", wait for two beeps, speak, and
+- **Wake word (hands-free)** — say "Hey Agora", wait for two beeps, speak, and
   pause, or click the talk button once to send now, twice to cancel. The model
   runs on the board (microWakeWord on TensorFlow Lite Micro); an energy VAD ends
   the recording when you stop talking and drops it if you said nothing. A slider
@@ -174,6 +176,7 @@ ChatClient.*     post to Agora, wait for the agent's reply (socket, else polling
 AgoraSocket.*    Agora's UI WebSocket: pushes the reply the moment it lands
 ReplyWatch.h     which message answers a chat job (poll and socket)
 Feedback.*       buzzer patterns and the listening LED
+StatusLight.*    the board's own RGB LED: amber while the mic is open, white as a message goes out, breathing violet while waiting, green or red at the end
 Display.*        16x2 I2C LCD: drawing task, diffed redraws, notices, backlight
 StatusScreen.*   what the LCD shows: polls the desk's state, raises notices
 Screens.h        every LCD layout, as pure functions
