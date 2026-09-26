@@ -15,11 +15,16 @@ one command plus a reflash.
 
 ## What ships
 
+`models/hey_agora.tflite` + `.json`: a **Hey Agora** model trained with
+[microWakeWord-Trainer-AppleSilicon](https://github.com/TaterTotterson/microWakeWord-Trainer-AppleSilicon)
+(microWakeWord v2 format, int8, stride 2). Its manifest carries the arena size
+measured on this board (52 000 bytes; the trainer's own estimate is lower). The
+firmware strips both "hey agora" and "hey jarvis" from transcripts.
+
 `models/hey_jarvis.tflite` + `.json`: the pre-trained **Hey Jarvis** v2 model from
 [esphome/micro-wake-word-models](https://github.com/esphome/micro-wake-word-models)
-(`models/v2/`, commit `05b6592`, Apache-2.0). The firmware strips both
-"hey jarvis" and "hey agora" from transcripts, so a Hey Agora model needs no code
-change.
+(`models/v2/`, commit `05b6592`, Apache-2.0), kept as a known-good fallback:
+`python3 tools/wake/make_model_header.py tools/wake/models/hey_jarvis.tflite`.
 
 ## Training "Hey Agora"
 

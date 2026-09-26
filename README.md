@@ -39,7 +39,7 @@ use voice, a Groq and/or OpenAI key for speech.
   the reply is read aloud through a MAX98357A speaker (Groq Orpheus or OpenAI
   TTS). Provider, model, voice and accent are picked per direction under
   Settings › Voice.
-- **Wake word (hands-free)** — say "Hey Jarvis", wait for two beeps, speak, and
+- **Wake word (hands-free)** — say "Hey Agora", wait for two beeps, speak, and
   pause, or click the talk button once to send now, twice to cancel. The model
   runs on the board (microWakeWord on TensorFlow Lite Micro); an energy VAD ends
   the recording when you stop talking and drops it if you said nothing. A slider
