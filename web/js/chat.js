@@ -142,7 +142,7 @@ function renderChat() {
     );
     log.append(typing);
   }
-  log.scrollTop = log.scrollHeight;
+  log.scrollTop = rows.length || waitingJob || sending ? log.scrollHeight : 0;
   syncComposer();
 }
 async function waitFor(job, id) {

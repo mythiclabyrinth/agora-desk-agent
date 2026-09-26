@@ -32,8 +32,7 @@ VOICE = dict(keys=dict(groq=False, openai=False), stt_provider='groq', tts_provi
              tts_models=dict(groq='canopylabs/orpheus-v1-english', openai='gpt-4o-mini-tts'),
              tts_voices=dict(groq='autumn', openai='alloy'), accent='american', stt_language='en', agent='claude',
              stt_ready=False, tts_ready=False, mic=True, speaker=True, button_pin=6,
-             wake_enabled=False, wake_cutoff=0.97, wake_available=True, wake_phrase='Hey Agora',
-             listen_led_pin=18)
+             wake_enabled=False, wake_cutoff=0.97, wake_available=True, wake_phrase='Hey Agora')
 # ?scenario=voice walks the button flow: recording -> transcribing -> waiting -> speaking -> done.
 # The chat mic button drives the same steps from /api/voice/talk.
 VOICE_STEPS = [(0, 'recording'), (3, 'transcribing'), (5, 'waiting'), (9, 'speaking'), (13, 'done')]
@@ -220,6 +219,9 @@ class Handler(BaseHTTPRequestHandler):
             self.reply({'ok':True,'ready':True})
         elif self.path == '/api/wifi':
             self.reply({'ok':True,'connected':True,'ip':'192.168.0.113'})
+        elif self.path == '/api/wifi/forget':
+            time.sleep(0.5)
+            self.reply({'ok':True,'ap_ip':'192.168.4.1'})
         elif self.path == '/api/voice':
             # Like the board, every field is optional; the page sends agent only when it was picked there.
             if 'agent' in data:

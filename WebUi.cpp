@@ -117,6 +117,7 @@ void WebUi::begin() {
   _server.on("/api/listen", HTTP_GET, [this]() { handleListen(); });
   _server.on("/api/wifi", HTTP_POST, [this]() { handleWifi(); });
   _server.on("/api/wifi/scan", HTTP_GET, [this]() { handleWifiScan(); });
+  _server.on("/api/wifi/forget", HTTP_POST, [this]() { handleWifiForget(); });
   _server.on("/api/agents", HTTP_GET, [this]() { handleAgentsGet(); });
   _server.on("/api/agents", HTTP_POST, [this]() { handleAgentsPost(); });
   _server.on(UriBraces("/api/agents/{}/channels"), HTTP_POST, [this]() { handleAgentChannels(); });
@@ -326,6 +327,24 @@ void WebUi::handleWifi() {
   response += "\"}";
   sendJson(200, response);
   Serial.print("Wi-Fi saved: ");
+  Serial.println(ssid);
+}
+
+// Clears the saved network and password, then drops the link; the board is
+// reachable on its setup network afterwards.
+void WebUi::handleWifiForget() {
+  if (voiceFlow.busy() || chatClient.phase() == Phase::Listening) {
+    sendError(409, "Wait for the current message to finish.");
+    return;
+  }
+  String ssid = configStore.wifiSsid();
+  configStore.forgetWifi();
+  portal.forget();
+  String response = "{\"ok\":true,\"ap_ip\":\"";
+  response += jsonEscape(portal.apIp());
+  response += "\"}";
+  sendJson(200, response);
+  Serial.print("Wi-Fi forgotten: ");
   Serial.println(ssid);
 }
 
@@ -574,9 +593,7 @@ void WebUi::handleVoiceGet() {
   body += wakeWord.available() ? "true" : "false";
   body += ",\"wake_phrase\":\"";
   body += jsonEscape(wakeWord.phrase());
-  body += "\",\"listen_led_pin\":";
-  body += String(LISTEN_LED_PIN);
-  body += '}';
+  body += "\"}";
   sendJson(200, body);
 }
 

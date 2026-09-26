@@ -7,11 +7,10 @@
 //   13, 12, 11   INMP441 mic (SD, SCK, WS)
 //   10, 9, 3     KY-040 dial (DT, CLK, knob switch)
 //   8, 7         LCD I2C (SDA, SCL)
-//   18           blue listening LED
 //   17, 16, 15   MAX98357A amp (DIN, BCLK, LRC)
 //   6            talk button
 //   4            buzzer
-// Free: GPIO 5, GPIO 46.
+// Free: GPIO 5, GPIO 18, GPIO 46.
 // 3 and 46 are strapping pins. 3 is ignored at boot unless the JTAG-select
 // eFuse is burned, which a stock S3 does not have. 46 must not be pulled high
 // while GPIO 0 is low (the upload path): a bare button to GND is safe there, a
@@ -25,9 +24,6 @@ constexpr uint8_t TALK_BUTTON_PIN = 6;
 // During a hands-free or page recording, one click sends it and two cancel
 // it; a click is single once this long passes without a second press.
 constexpr unsigned long TALK_DOUBLE_CLICK_MS = 350;
-// Blue LED, lit while the mic listens (wake word armed, or recording). It
-// drops ~3 V, so from a 3.3 V pin it needs 47-100 ohm, not 220-330.
-constexpr uint8_t LISTEN_LED_PIN = 18;
 
 // KY-040 rotary encoder: picks the hands-free agent. Power it from 3V3, not
 // 5V: its 10k pull-ups go to "+", and the S3's GPIOs are not 5 V tolerant.
@@ -183,6 +179,10 @@ constexpr char MDNS_HOST[] = "esp32-agent";
 
 // Speaking blocks the web server; page and typed replies wait this long so the page can fetch them.
 constexpr unsigned long SPEAK_GRACE_MS = 1500;
+
+// After "forget this network", the link drops this long later so the reply
+// to that request still gets out.
+constexpr unsigned long WIFI_FORGET_DELAY_MS = 1500;
 
 constexpr unsigned long LISTEN_TIMEOUT_MS = 180000;
 // REST polling is the fallback while Agora's socket is down...

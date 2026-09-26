@@ -8,8 +8,6 @@ Feedback feedback;
 void Feedback::begin() {
   pinMode(BUZZER_PIN, OUTPUT);
   digitalWrite(BUZZER_PIN, LOW);
-  pinMode(LISTEN_LED_PIN, OUTPUT);
-  digitalWrite(LISTEN_LED_PIN, LOW);
 }
 
 void Feedback::beep(int duration) {
@@ -71,11 +69,6 @@ void Feedback::agentCue(uint8_t position) {
   }
 }
 
-void Feedback::listenLed(bool on) {
-  if (_listenLed == (on ? 1 : 0)) return;
-  _listenLed = on ? 1 : 0;
-  digitalWrite(LISTEN_LED_PIN, on ? HIGH : LOW);
-}
 
 void Feedback::follow(Phase phase) {
   if (phase == _phase) return;

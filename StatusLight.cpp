@@ -22,17 +22,18 @@ void StatusLight::resting() {
   _lastLevel = 255;
   if (_voice == VoicePhase::Recording) show(RGB_STATUS_LEVEL, RGB_STATUS_LEVEL * 2 / 5, 0);
   else if (_voice == VoicePhase::Transcribing) show(RGB_STATUS_LEVEL / 3, RGB_STATUS_LEVEL * 2 / 15, 0);
-  else if (_chat != Phase::Listening) show(0, 0, 0);
-  // Listening breathes from update().
+  else if (_chat == Phase::Listening) return;  // breathes from update()
+  else if (_listening) show(0, 0, RGB_STATUS_LEVEL);
+  else show(0, 0, 0);
 }
 
-void StatusLight::follow(Phase chat, VoicePhase voice) {
+void StatusLight::follow(Phase chat, VoicePhase voice, bool listening) {
   bool chatChanged = chat != _chat;
-  bool voiceChanged = voice != _voice;
-  if (!chatChanged && !voiceChanged) return;
+  if (!chatChanged && voice == _voice && listening == _listening) return;
   Phase previous = _chat;
   _chat = chat;
   _voice = voice;
+  _listening = listening;
   if (chatChanged && chat == Phase::Listening) {
     flash(RGB_STATUS_LEVEL, RGB_STATUS_LEVEL, RGB_STATUS_LEVEL, RGB_STATUS_FLASH_MS);
     _breatheFrom = millis();

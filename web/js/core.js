@@ -77,11 +77,12 @@ function note(target, text, bad = false) {
   target.textContent = text;
   target.className = 'note' + (bad ? ' bad' : '');
 }
-function banner(text, bad = false) {
+function banner(text, bad = false, connectWifi = false) {
   $('#banner').hidden = !text;
   $('#banner-text').textContent = text;
   $('#banner').classList.toggle('bad', bad);
   $('#retry').hidden = !bad;
+  $('#connect-wifi').hidden = !connectWifi;
 }
 async function api(path, body, timeout = 12000) {
   const controller = new AbortController();

@@ -55,6 +55,7 @@ The page talks to the firmware only through the JSON API in `WebUi.cpp`:
 | `GET/POST /api/agents` | per-agent settings (token is write-only) |
 | `POST /api/agents/{claude\|cursor\|codex}/channels` | `{url?, agent_id?, name?, token?}` (empty → saved value) → Agora's `GET /api/agents/{id}/channels` → `{agent: {id, name, live}, channels: [{id, name, group, kind}]}`, only the channels the agent belongs to; upstream failures are 502 with a sentence |
 | `POST /api/wifi`, `GET /api/wifi/scan` | join / scan |
+| `POST /api/wifi/forget` | clears the saved network and password, then drops the station link `WIFI_FORGET_DELAY_MS` later so the reply gets out; the setup network stays up → `{ap_ip}` |
 | `GET/POST /api/voice`, `POST /api/voice/keys`, `POST /api/voice/test` | voice settings; keys write-only; POST fields are optional and the page sends `agent` only when picked, so it never undoes a dial turn; `stt_language` is an ISO code (`en`) or empty for auto-detect |
 | `POST /api/voice/talk` | `{action: start\|stop, agent}` drives the board mic from the page |
 | `POST /api/voice/wake` | `{enabled?, cutoff?}` wake word on/off (= the dial's long press) and the detector cutoff, 0.50–0.99; allowed mid-exchange → `{wake}` |
@@ -138,7 +139,7 @@ Adding a field: add it to the firmware handler, the page, **and**
   it's a browser rule. HTTPS on the board would mean replacing `WebServer` with
   `esp_https_server`.
 - **Pins** live in `Board.h`, whose header comment maps every header pin.
-  Free: GPIO 5 and GPIO 46. 46 is a strapping pin that must not be pulled high
+  Free: GPIO 5, 18 and 46. 46 is a strapping pin that must not be pulled high
   while GPIO 0 is low (uploads fail): a bare button to GND is fine, a pulled-up
   part is not. Strapping pin 3 (the dial's knob switch) is ignored at boot on a
   stock S3. 8 (SDA) and 7 (SCL) are the LCD's I2C bus; I2S port 0 is the mic,
@@ -167,7 +168,7 @@ Adding a field: add it to the firmware handler, the page, **and**
   must do the same, or replies containing the phrase will wake the board.
 - **Wake settings are cached** in `ConfigStore` (`wake()`), because `loop()`
   reads them every pass; `wake_enabled` is the single source of truth for the
-  dial's long press, the page toggle and the blue LED (LED = armed or recording).
+  dial's long press, the page toggle and the RGB light (blue = armed).
   The cutoff is stored in the detector's 0-255 unit and shown as 0-1; every
   write clamps it to `WAKE_CUTOFF_MIN..MAX`.
 - **The talk button clicks during a wake or page recording.** `ClickCounter`

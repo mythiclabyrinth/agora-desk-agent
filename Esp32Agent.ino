@@ -7,8 +7,8 @@
 //
 // Hold the talk button and speak, and the same thing happens by voice: the
 // INMP441 records, Groq or OpenAI transcribes it, and the reply is spoken
-// through the MAX98357A. The buzzer marks each step; the blue LED is lit
-// while the mic listens.
+// through the MAX98357A. The buzzer marks each step; the board's RGB LED is
+// blue while the mic listens and follows the exchange from there.
 //
 // Hands-free: unless muted, say the wake phrase, wait for two beeps, speak,
 // and pause. A microWakeWord model runs on the board (WakeModel.h) and an
@@ -30,12 +30,11 @@
 // Wiring (ESP32-S3; details and rationale in Board.h):
 //   Active buzzer        GPIO 4 -> buzzer -> GND
 //   Talk button          GPIO 6 -> button -> GND (internal pull-up)
-//   Blue listening LED   GPIO 18 -> 47-100 ohm -> LED -> GND
 //   KY-040 dial          CLK GPIO 9, DT GPIO 10, SW GPIO 3, + -> 3V3 (not 5V), GND
 //   INMP441 mic          SCK GPIO 12, WS GPIO 11, SD GPIO 13, L/R -> GND, VDD 3V3
 //   MAX98357A amp        BCLK GPIO 16, LRC GPIO 15, DIN GPIO 17, VIN 5V, speaker on +/-
 //   16x2 LCD (PCF8574)   SDA GPIO 8, SCL GPIO 7, VCC 5V, GND (pull-ups to 3V3 only; see Board.h)
-// Free: GPIO 5 and GPIO 46. 46 is a strapping pin: a bare button to GND is
+// Free: GPIO 5, 18 and 46. 46 is a strapping pin: a bare button to GND is
 // safe there, a part with a pull-up is not (see Board.h).
 //
 // Libraries: "LiquidCrystal I2C" (Frank de Brabander) and "WebSockets"
@@ -100,7 +99,7 @@ void loop() {
   // After voiceFlow, so a recording that just ended frees any held beep.
   agentDial.update();
   feedback.follow(chatClient.phase());
-  statusLight.follow(chatClient.phase(), voiceFlow.phase());
+  statusLight.follow(chatClient.phase(), voiceFlow.phase(), voiceFlow.wakeArmed());
   statusLight.update();
   statusScreen.update();
   webUi.handle();

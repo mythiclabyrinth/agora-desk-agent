@@ -12,6 +12,7 @@ private:
   void handleStatus();
   void handleListen();
   void handleWifi();
+  void handleWifiForget();
   void handleWifiScan();
   void handleAgentsGet();
   void handleAgentsPost();

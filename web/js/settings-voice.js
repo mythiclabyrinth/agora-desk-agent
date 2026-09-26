@@ -522,7 +522,7 @@ async function renderVoice() {
   root.append(stack);
   activate(panes[voiceTab] ? voiceTab : 'credentials');
 }
-// Wake word: one setting shared with the desk dial's long press (wake_enabled == not muted). The blue LED
+// Wake word: one setting shared with the desk dial's long press (wake_enabled == not muted). The RGB light
 // shows when the desk mic is listening. The meter reads the detector's smoothed score from /api/status.
 function wakePanel(v) {
   const phrase = v.wake_phrase || 'the wake word';
@@ -558,7 +558,7 @@ function wakePanel(v) {
   const hint = el(
     'p',
     'note',
-    'The blue light on the desk is on while its microphone is listening. Hold the dial’s knob to mute or ' +
+    'The board’s light is blue while its microphone is listening. Hold the dial’s knob to mute or ' +
       'unmute; a short press says which agent is selected. While it records, click the talk button once to ' +
       'send now or twice to cancel. The talk button works either way.',
   );

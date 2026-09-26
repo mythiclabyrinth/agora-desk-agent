@@ -74,6 +74,7 @@ async function refreshStatus() {
     $('#device-ip').textContent = online ? s.ip : 'Setup · ' + (s.ap_ip || '192.168.4.1');
     savedSsid = s.ssid || '';
     $('#wifi-current').textContent = savedSsid || 'No network selected';
+    $('#forget-network').hidden = !savedSsid;
     $('#wifi-state').textContent = online
       ? 'Connected · ' + s.ip
       : savedSsid
@@ -92,6 +93,8 @@ async function refreshStatus() {
             : !online
               ? 'Your board is available. Connect it to Wi-Fi in Settings to send messages.'
               : '',
+        false,
+        !online && !voiceBusy && !boardBusy,
       );
     syncComposer();
   } catch (e) {
